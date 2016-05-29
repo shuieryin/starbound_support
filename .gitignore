@@ -1,0 +1,18 @@
+# IntelliJ project files
+.idea
+*.iml
+out
+gen
+ebin
+.rebar
+.eunit
+*.rdb
+deps
+*.dump
+_build
+rebar.lock
+log
+logs
+doc
+docs/sketch*
+config/rebar3

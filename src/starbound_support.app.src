@@ -1,0 +1,7 @@
+{application, starbound_support,
+    [{vsn, "0.0.1"},
+        {description, "This is the starbound support to maintain sb server."},
+        {registered, []},
+        {applications, [kernel, stdlib]},
+        {mod, {starbound_support_app, []}},
+        {env, []}]}.
