@@ -61,6 +61,12 @@ init([]) ->
     {ok, {
         SupFlags,
         [
-
+            {common_server,
+                {common_server, start_link, []},
+                permanent,
+                10000,
+                worker,
+                [common_server]
+            }
         ]
     }}.

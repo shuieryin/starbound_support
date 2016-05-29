@@ -1,0 +1,17 @@
+sudo: false
+install: true
+language:
+  - erlang
+
+services:
+  - redis-server
+
+script:
+  - make
+
+notifications:
+  email:
+    - shuieryin@gmail.com
+
+otp_release:
+  - 18.3
