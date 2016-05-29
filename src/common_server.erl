@@ -20,7 +20,7 @@
     all_configs/0,
     all_users/0,
     add_user/2,
-    get_user/1
+    user/1
 ]).
 
 %% gen_server callbacks
@@ -125,11 +125,11 @@ add_user(Username, Password) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec get_user(Username) -> Password when
+-spec user(Username) -> Password when
     Username :: binary(),
     Password :: binary().
-get_user(Username) ->
-    gen_server:call({global, ?SERVER}, {get_user, Username}).
+user(Username) ->
+    gen_server:call({global, ?SERVER}, {user, Username}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -183,7 +183,7 @@ init([]) ->
     all_configs |
     all_users |
     {add_user, Username, Password} |
-    {get_user, Username},
+    {user, Username},
 
     Reply :: add_user_status() | term() | undefined,
 
@@ -206,23 +206,15 @@ handle_call(all_configs, _From, #state{
 handle_call(all_users, _From, State) ->
     {reply, serverUsers(State), State};
 handle_call({add_user, Username, Password}, _From, State) ->
-    AllUsers = serverUsers(State),
-    {Status, UpdatedState} =
-        case maps:is_key(Username, AllUsers) of
-            true ->
-                {user_exist, State};
-            false ->
-                #state{
-                    sbboot_config = SbbConfig
-                } = State2 = add_user(Username, Password, State),
+    #state{
+        sbboot_config = SbbConfig
+    } = UpdatedState = add_user(Username, Password, State),
 
-                SbbConfigBin = json:to_binary(SbbConfig),
-                file:write_file(?SBBCONFIG_PATH, SbbConfigBin),
+    SbbConfigBin = json:to_binary(SbbConfig),
+    file:write_file(?SBBCONFIG_PATH, SbbConfigBin),
 
-                {ok, State2}
-        end,
-    {reply, Status, UpdatedState};
-handle_call({get_user, Username}, _From, State) ->
+    {reply, ok, UpdatedState};
+handle_call({user, Username}, _From, State) ->
     AllUsers = serverUsers(State),
     Result = case maps:get(Username, AllUsers, undefined) of
                  undefined ->
