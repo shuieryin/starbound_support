@@ -20,6 +20,8 @@
 
 -record(state, {}).
 
+-define(SBBCONFIG_PATH, "/home/steam/steamcmd/starbound/linux64/sbboot.config"). % dummy "/Users/shuieryin/Workspaces/starbound_support/test/sbboot.config"
+
 %% ===================================================================
 %% Application callbacks
 %% ===================================================================
@@ -35,7 +37,7 @@
     StartArgs :: term(), % generic term
     Return :: {ok, pid(), State :: #state{}}.
 start(normal, _StartArgs) ->
-    {ok, Pid} = starbound_support_sup:start_link(),
+    {ok, Pid} = starbound_support_sup:start_link(?SBBCONFIG_PATH),
     {ok, Pid, #state{}}.
 
 %%--------------------------------------------------------------------

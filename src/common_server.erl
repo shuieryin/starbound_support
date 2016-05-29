@@ -13,8 +13,8 @@
 
 %% API
 -export([
-    start_link/0,
-    start/0,
+    start_link/1,
+    start/1,
     stop/0,
     get/1,
     all_configs/0,
@@ -35,11 +35,11 @@
 ]).
 
 -define(SERVER, ?MODULE).
--define(SBBCONFIG_PATH, "/Users/shuieryin/Workspaces/starbound_support/sbboot.config").
 
 -type add_user_status() :: ok | user_exist.
 
 -record(state, {
+    sbboot_config_path :: file:filename(),
     sbboot_config :: map()
 }).
 
@@ -53,9 +53,9 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec start_link() -> gen:start_ret().
-start_link() ->
-    gen_server:start_link({global, ?SERVER}, ?MODULE, [], []).
+-spec start_link(SbbConfigPath :: file:filename()) -> gen:start_ret().
+start_link(SbbConfigPath) ->
+    gen_server:start_link({global, ?SERVER}, ?MODULE, SbbConfigPath, []).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -63,9 +63,9 @@ start_link() ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec start() -> gen:start_ret().
-start() ->
-    gen_server:start({global, ?SERVER}, ?MODULE, [], []).
+-spec start(SbbConfigPath :: file:filename()) -> gen:start_ret().
+start(SbbConfigPath) ->
+    gen_server:start({global, ?SERVER}, ?MODULE, SbbConfigPath, []).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -146,22 +146,22 @@ user(Username) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
--spec init(Args) ->
+-spec init(SbbConfigPath :: file:filename()) ->
     {ok, State} |
     {ok, State, timeout() | hibernate} |
     {stop, Reason} |
     ignore when
 
-    Args :: term(),
     State :: #state{},
     Reason :: term(). % generic term
-init([]) ->
+init(SbbConfigPath) ->
     io:format("~p starting...", [?MODULE]),
-    {ok, RawSbbootConfig} = file:read_file(?SBBCONFIG_PATH),
+    {ok, RawSbbootConfig} = file:read_file(SbbConfigPath),
     SbbootConfig = json:from_binary(RawSbbootConfig),
     io:format("started~n"),
     {ok, #state{
-        sbboot_config = SbbootConfig
+        sbboot_config = SbbootConfig,
+        sbboot_config_path = SbbConfigPath
     }}.
 
 %%--------------------------------------------------------------------
@@ -207,11 +207,12 @@ handle_call(all_users, _From, State) ->
     {reply, serverUsers(State), State};
 handle_call({add_user, Username, Password}, _From, State) ->
     #state{
-        sbboot_config = SbbConfig
+        sbboot_config = SbbConfig,
+        sbboot_config_path = SbbConfigPath
     } = UpdatedState = add_user(Username, Password, State),
 
     SbbConfigBin = json:to_binary(SbbConfig),
-    file:write_file(?SBBCONFIG_PATH, SbbConfigBin),
+    file:write_file(SbbConfigPath, SbbConfigBin),
 
     {reply, ok, UpdatedState};
 handle_call({user, Username}, _From, State) ->
