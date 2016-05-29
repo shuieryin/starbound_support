@@ -15,7 +15,12 @@
 -export([
     start_link/0,
     start/0,
-    stop/0
+    stop/0,
+    get/1,
+    all_configs/0,
+    all_users/0,
+    add_user/2,
+    get_user/1
 ]).
 
 %% gen_server callbacks
@@ -30,8 +35,13 @@
 ]).
 
 -define(SERVER, ?MODULE).
+-define(SBBCONFIG_PATH, "/Users/shuieryin/Workspaces/starbound_support/sbboot.config").
 
--record(state, {}).
+-type add_user_status() :: ok | user_exist.
+
+-record(state, {
+    sbboot_config :: map()
+}).
 
 %%%===================================================================
 %%% API
@@ -45,7 +55,7 @@
 %%--------------------------------------------------------------------
 -spec start_link() -> gen:start_ret().
 start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+    gen_server:start_link({global, ?SERVER}, ?MODULE, [], []).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -55,7 +65,7 @@ start_link() ->
 %%--------------------------------------------------------------------
 -spec start() -> gen:start_ret().
 start() ->
-    gen_server:start({local, ?SERVER}, ?MODULE, [], []).
+    gen_server:start({global, ?SERVER}, ?MODULE, [], []).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -66,6 +76,60 @@ start() ->
 -spec stop() -> ok.
 stop() ->
     gen_server:cast(?SERVER, stop).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get value by given key.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec get(binary()) -> term().
+get(Key) ->
+    gen_server:call({global, ?SERVER}, {get, Key}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get value by given key.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec all_configs() -> map().
+all_configs() ->
+    gen_server:call({global, ?SERVER}, all_configs).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get all users.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec all_users() -> map().
+all_users() ->
+    gen_server:call({global, ?SERVER}, all_users).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Add username and password.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec add_user(Username, Password) -> ok when
+    Username :: binary(),
+    Password :: binary().
+add_user(Username, Password) ->
+    gen_server:call({global, ?SERVER}, {add_user, Username, Password}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Add username and password.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec get_user(Username) -> Password when
+    Username :: binary(),
+    Password :: binary().
+get_user(Username) ->
+    gen_server:call({global, ?SERVER}, {get_user, Username}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -92,7 +156,13 @@ stop() ->
     State :: #state{},
     Reason :: term(). % generic term
 init([]) ->
-    {ok, #state{}}.
+    io:format("~p starting...", [?MODULE]),
+    {ok, RawSbbootConfig} = file:read_file(?SBBCONFIG_PATH),
+    SbbootConfig = json:from_binary(RawSbbootConfig),
+    io:format("started~n"),
+    {ok, #state{
+        sbboot_config = SbbootConfig
+    }}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -109,15 +179,58 @@ init([]) ->
     {stop, Reason, Reply, NewState} |
     {stop, Reason, NewState} when
 
-    Request :: term(),  % generic term
-    Reply :: ok,
+    Request :: {get, Key} |
+    all_configs |
+    all_users |
+    {add_user, Username, Password} |
+    {get_user, Username},
+
+    Reply :: add_user_status() | term() | undefined,
+
+    Key :: binary(),
+    Username :: binary(),
+    Password :: binary(),
 
     From :: {pid(), Tag :: term()}, % generic term
     State :: #state{},
     NewState :: State,
     Reason :: term(). % generic term
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
+handle_call({get, Key}, _From, #state{
+    sbboot_config = SbbConfig
+} = State) ->
+    {reply, maps:get(Key, SbbConfig, undefined), State};
+handle_call(all_configs, _From, #state{
+    sbboot_config = SbbConfig
+} = State) ->
+    {reply, SbbConfig, State};
+handle_call(all_users, _From, State) ->
+    {reply, serverUsers(State), State};
+handle_call({add_user, Username, Password}, _From, State) ->
+    AllUsers = serverUsers(State),
+    {Status, UpdatedState} =
+        case maps:is_key(Username, AllUsers) of
+            true ->
+                {user_exist, State};
+            false ->
+                #state{
+                    sbboot_config = SbbConfig
+                } = State2 = add_user(Username, Password, State),
+
+                SbbConfigBin = json:to_binary(SbbConfig),
+                file:write_file(?SBBCONFIG_PATH, SbbConfigBin),
+
+                {ok, State2}
+        end,
+    {reply, Status, UpdatedState};
+handle_call({get_user, Username}, _From, State) ->
+    AllUsers = serverUsers(State),
+    Result = case maps:get(Username, AllUsers, undefined) of
+                 undefined ->
+                     undefined;
+                 #{<<"password">> := Password} ->
+                     Password
+             end,
+    {reply, Result, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -218,5 +331,47 @@ format_status(Opt, StatusData) ->
     gen_server:format_status(Opt, StatusData).
 
 %%%===================================================================
-%%% Internal functions (N/A)
+%%% Internal functions
 %%%===================================================================
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get all server users.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec serverUsers(#state{}) -> map().
+serverUsers(#state{
+    sbboot_config = SbbConfig
+}) ->
+    DefaultConfig = maps:get(<<"defaultConfiguration">>, SbbConfig),
+    maps:get(<<"serverUsers">>, DefaultConfig).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Add user
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec add_user(Username, Password, #state{}) -> #state{} when
+    Username :: binary(),
+    Password :: binary().
+add_user(Username, Password, #state{
+    sbboot_config = #{
+        <<"defaultConfiguration">> := #{
+            <<"serverUsers">> := ExistingServerUsers
+        } = DefaultConfig
+    } = SbbConfig
+} = State) ->
+    State#state{
+        sbboot_config = SbbConfig#{
+            <<"defaultConfiguration">> := DefaultConfig#{
+                <<"serverUsers">> := ExistingServerUsers#{
+                    Username => #{
+                        <<"admin">> => false,
+                        <<"password">> => Password
+                    }
+                }
+            }
+        }
+    }.
