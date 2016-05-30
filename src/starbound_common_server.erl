@@ -214,6 +214,8 @@ handle_call({add_user, Username, Password}, _From, State) ->
     SbbConfigBin = json:to_binary(SbbConfig),
     file:write_file(SbbConfigPath, SbbConfigBin),
 
+    error_logger:info_msg("Added username:[~p], password:[~p]", [Username, Password]),
+
     {reply, ok, UpdatedState};
 handle_call({user, Username}, _From, State) ->
     AllUsers = serverUsers(State),

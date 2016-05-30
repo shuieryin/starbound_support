@@ -8,3 +8,6 @@ install:
 
 run:
 	@./_build/default/rel/starbound_support/bin/starbound_support console
+
+build:
+	@./config/rebar3 build
