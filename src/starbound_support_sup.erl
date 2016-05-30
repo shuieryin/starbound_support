@@ -61,12 +61,12 @@ init(SbbConfigPath) ->
     {ok, {
         SupFlags,
         [
-            {common_server,
-                {common_server, start_link, [SbbConfigPath]},
+            {starbound_common_server,
+                {starbound_common_server, start_link, [SbbConfigPath]},
                 permanent,
                 10000,
                 worker,
-                [common_server]
+                [starbound_common_server]
             }
         ]
     }}.
