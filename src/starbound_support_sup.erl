@@ -49,8 +49,8 @@ start_link(SbbConfigPath) ->
 -spec init(SbbConfigPath :: file:filename()) ->
     {ok, {SupFlags :: supervisor:sup_flags(), [ChildSpec :: supervisor:child_spec()]}} | ignore.
 init(SbbConfigPath) ->
-    [{AppName, _AppVersion, _Applications, _ReleaseStatus}] = release_handler:which_releases(permanent),
-    erlang:set_cookie(node(), list_to_atom(AppName)),
+    [{_AppName, _AppVersion, _Applications, _ReleaseStatus}] = release_handler:which_releases(permanent),
+    % erlang:set_cookie(node(), list_to_atom(AppName)),
 
     RestartStrategy = one_for_one,
     MaxRestarts = 1000,
