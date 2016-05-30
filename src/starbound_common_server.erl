@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 29. May 2016 3:52 PM
 %%%-------------------------------------------------------------------
--module(common_server).
+-module(starbound_common_server).
 -author("shuieryin").
 
 -behaviour(gen_server).

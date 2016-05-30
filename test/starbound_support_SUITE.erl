@@ -23,7 +23,7 @@
 ]).
 
 -export([
-    common_server_test/1
+    starbound_common_server_test/1
 ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -51,11 +51,11 @@ groups() ->
         servers,
         [{repeat, 1}], % parallel
         [
-            common_server_test
+            starbound_common_server_test
         ]
     }].
 
-common_server_test(Cfg) -> common_server_test:test(Cfg).
+starbound_common_server_test(Cfg) -> starbound_common_server_test:test(Cfg).
 
 %%%===================================================================
 %%% Init states
@@ -65,11 +65,11 @@ init_per_suite(Config) ->
     {data_dir, RawDataDir} = lists:keyfind(data_dir, 1, Config),
     DataDir = filename:dirname(filename:dirname(RawDataDir)),
     DummySbbConfigPath = filename:join([DataDir, "sbboot.config.json"]),
-    common_server:start(DummySbbConfigPath),
+    starbound_common_server:start(DummySbbConfigPath),
     Config.
 
 end_per_suite(_Config) ->
-    common_server:stop(),
+    starbound_common_server:stop(),
     ok.
 
 init_per_group(_GroupName, Config) ->

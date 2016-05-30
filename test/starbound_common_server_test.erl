@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 29. Nov 2015 8:09 PM
 %%%-------------------------------------------------------------------
--module(common_server_test).
+-module(starbound_common_server_test).
 -author("shuieryin").
 
 %% API
@@ -28,7 +28,7 @@
 
 test(_Config) ->
     ModelState = #state{
-        all_users = common_server:all_users()
+        all_users = starbound_common_server:all_users()
     },
 
     RandomFuncs = [
@@ -51,13 +51,13 @@ user(#state{
     all_users = AllUsers
 }) ->
     Username = ?ONE_OF([<<"undefined_user">> | maps:keys(AllUsers)]),
-    common_server:user(Username).
+    starbound_common_server:user(Username).
 
 all_configs(_State) ->
-    common_server:all_configs().
+    starbound_common_server:all_configs().
 
 get(_State) ->
-    common_server:get(?ONE_OF([<<"defaultConfiguration">>, <<"sjkdlfj">>])).
+    starbound_common_server:get(?ONE_OF([<<"defaultConfiguration">>, <<"sjkdlfj">>])).
 
 add_user(_State) ->
-    common_server:add_user(<<"test_user2">>, <<"test_user2_password">>).
+    starbound_common_server:add_user(<<"test_user2">>, <<"test_user2_password">>).
