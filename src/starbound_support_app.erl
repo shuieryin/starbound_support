@@ -37,6 +37,7 @@
     StartArgs :: term(), % generic term
     Return :: {ok, pid(), State :: #state{}}.
 start(normal, _StartArgs) ->
+    erlang:set_cookie(node(), wechat_mud),
     {ok, Pid} = starbound_support_sup:start_link(?SBBCONFIG_PATH),
     {ok, Pid, #state{}}.
 
