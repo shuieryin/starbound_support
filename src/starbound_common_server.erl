@@ -159,10 +159,46 @@ init(SbbConfigPath) ->
     {ok, RawSbbootConfig} = file:read_file(SbbConfigPath),
     SbbootConfig = json:from_binary(RawSbbootConfig),
     io:format("started~n"),
+
+    spawn(
+        fun() ->
+            cmd("tail -fn0 /home/steam/steamcmd/starbound/giraffe_storage/starbound_server.log")
+        end),
+
     {ok, #state{
         sbboot_config = SbbootConfig,
         sbboot_config_path = SbbConfigPath
     }}.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Execute command and print output in realtime.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec cmd(string()) -> ok.
+cmd(CmdStr) ->
+    OutputNode = erlang:open_port({spawn, CmdStr},
+        [stderr_to_stdout, in, exit_status,
+            binary, stream, {line, 255}]),
+
+    cmd_receive(OutputNode).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Receive func for cmd/1.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec cmd_receive(port()) -> ok.
+cmd_receive(OutputNode) ->
+    receive
+        {OutputNode, {data, {eol, OutputBin}}} ->
+            io:format(<<"~n", OutputBin/binary>>),
+            cmd_receive(OutputNode);
+        {OutputNode, {exit_status, 0}} ->
+            io:format("~n")
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
