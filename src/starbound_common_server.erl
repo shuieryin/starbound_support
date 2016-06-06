@@ -38,9 +38,31 @@
 
 -type add_user_status() :: ok | user_exist.
 
+-record(player_info, {
+    player_name :: binary(),
+    ip_addr :: inet:ip4_address(),
+    last_login_time :: erlang:timestamp()
+}).
+
+-record(user_info, {
+    username :: binary(),
+    last_login_time :: erlang:timestamp(),
+    player_infos :: #{PlayerName :: binary() => #player_info{}},
+    is_banned = false :: boolean()
+}).
+
 -record(state, {
     sbboot_config_path :: file:filename(),
-    sbboot_config :: map()
+    sbboot_config :: map(),
+    online_in_users = #{} :: #{Username :: binary() => #player_info{}},
+    all_users = #{} :: #{Username :: binary() => #user_info{}}
+}).
+
+-record(sb_message, {
+    time :: binary(),
+    type :: 'Info' | 'Warning' | 'Error' | 'Debug',
+    server :: binary(),
+    content :: binary()
 }).
 
 %%%===================================================================
@@ -160,44 +182,47 @@ init(SbbConfigPath) ->
     SbbootConfig = json:from_binary(RawSbbootConfig),
     io:format("started~n"),
 
+    ServerHomePath = "/home/steam/steamcmd/starbound/giraffe_storage",
+    LogPath = filename:join([ServerHomePath, "starbound_server.log"]),
+    UsersInfoPath = filename:join([ServerHomePath, "users_info"]),
+
+    AllUsers =
+        case filelib:is_regular(UsersInfoPath) of
+            true ->
+                file:consult(UsersInfoPath);
+            false ->
+                #{}
+        end,
+
     spawn(
         fun() ->
-            cmd("tail -fn0 /home/steam/steamcmd/starbound/giraffe_storage/starbound_server.log")
+            elib:cmd("tail -fn0 " ++ LogPath, fun analyze_log/1)
         end),
 
     {ok, #state{
         sbboot_config = SbbootConfig,
-        sbboot_config_path = SbbConfigPath
+        sbboot_config_path = SbbConfigPath,
+        all_users = AllUsers
     }}.
 
 %%--------------------------------------------------------------------
 %% @doc
-%% Execute command and print output in realtime.
+%% Analyze starbound log.
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec cmd(string()) -> ok.
-cmd(CmdStr) ->
-    OutputNode = erlang:open_port({spawn, CmdStr},
-        [stderr_to_stdout, in, exit_status,
-            binary, stream, {line, 255}]),
-
-    cmd_receive(OutputNode).
-
-%%--------------------------------------------------------------------
-%% @doc
-%% Receive func for cmd/1.
-%%
-%% @end
-%%--------------------------------------------------------------------
--spec cmd_receive(port()) -> ok.
-cmd_receive(OutputNode) ->
-    receive
-        {OutputNode, {data, {eol, OutputBin}}} ->
-            io:format(<<"~n", OutputBin/binary>>),
-            cmd_receive(OutputNode);
-        {OutputNode, {exit_status, 0}} ->
-            io:format("~n")
+-spec analyze_log(LineBin :: binary()) -> ok.
+analyze_log(LineBin) ->
+    case re:run(LineBin, <<"^\\[(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]\s+(\\S*):\\s+(\\S*):\\s+(.*)">>, [{capture, all_but_first, binary}]) of
+        {match, [Time, Type, Server, Content]} ->
+            gen_server:cast(?SERVER, {analyze_log, #sb_message{
+                time = Time,
+                type = binary_to_atom(Type, utf8),
+                server = Server,
+                content = Content
+            }});
+        _NoMatch ->
+            ok
     end.
 
 %%--------------------------------------------------------------------
@@ -275,21 +300,66 @@ handle_call({user, Username}, _From, State) ->
     {noreply, NewState, timeout() | hibernate} |
     {stop, Reason, NewState} when
 
-    Request :: term() | stop, % generic term
+    Request :: {analyze_log, #sb_message{}} | stop, % generic term
     State :: #state{},
     NewState :: State,
     Reason :: term(). % generic term
 handle_cast(stop, State) ->
     {stop, normal, State};
-handle_cast(_Request, State) ->
-    {noreply, State}.
+handle_cast({analyze_log, #sb_message{
+    content = Content
+}}, #state{
+    online_in_users = OnlineUsers,
+    all_users = AllUsers
+} = State) ->
+    case re:run(Content, <<"^Logged\\sin\\saccount\\s''(\\S*)''\\sas\\splayer\\s'(\\S*)'\\sfrom\\saddress\\s(0000:0000:0000:0000:0000:ffff:\\S{4}:\\S{4})">>, [{capture, all_but_first, binary}]) of
+        {match, [Username, PlayerName, PlayerAddr]} ->
+            Timestamp = os:timestamp(),
+            {ok, Ipv4Addr} = elib:ipv6_2_ipv4(PlayerAddr),
+
+            CurPlayerInfo = #player_info{
+                player_name = PlayerName,
+                ip_addr = Ipv4Addr,
+                last_login_time = Timestamp
+            },
+
+            UpdatedAllUsers =
+                case maps:get(Username, AllUsers, undefined) of
+                    undefined ->
+                        AllUsers#{
+                            Username => #user_info{
+                                username = Username,
+                                last_login_time = Timestamp,
+                                player_infos = #{PlayerName => CurPlayerInfo}
+                            }
+                        };
+                    #user_info{
+                        player_infos = PlayerInfos
+                    } = ExistingUser ->
+                        AllUsers#{
+                            Username := ExistingUser#user_info{
+                                last_login_time = Timestamp,
+                                player_infos = PlayerInfos#{PlayerName => CurPlayerInfo}
+                            }
+                        }
+                end,
+
+            UpdatedOnlineUsers = OnlineUsers#{
+                Username => CurPlayerInfo
+            }
+    end,
+
+    {noreply, State#state{
+        all_users = UpdatedAllUsers,
+        online_in_users = UpdatedOnlineUsers
+    }}.
 
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
 %% Handling all non call/cast messages
 %%
-%% @spec handle_info(Info, State) -> {noreply, State} |
+%% @spec handle_info(Info, State) -> {noreply, State} |¢
 %%                                   {noreply, State, Timeout} |
 %%                                   {stop, Reason, State}
 %% @end

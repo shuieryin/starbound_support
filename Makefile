@@ -11,3 +11,6 @@ run:
 
 build:
 	@./config/rebar3 build
+
+hcu:
+	@./config/rebar3 hcu

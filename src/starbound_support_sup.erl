@@ -67,6 +67,14 @@ init(SbbConfigPath) ->
                 10000,
                 worker,
                 [starbound_common_server]
+            },
+
+            {information_server,
+                {information_server, start_link, []},
+                permanent,
+                10000,
+                worker,
+                [information_server]
             }
         ]
     }}.
