@@ -57,7 +57,7 @@
     user_info_path :: file:filename(),
     sbboot_config_path :: file:filename(),
     sbboot_config :: map(),
-    online_in_users = #{} :: #{Username :: binary() => #player_info{}},
+    online_users = #{} :: #{Username :: binary() => #player_info{}},
     all_users = #{} :: #{Username :: binary() => #user_info{}}
 }).
 
@@ -212,7 +212,8 @@ init(SbbConfigPath) ->
     AllUsers =
         case filelib:is_regular(UsersInfoPath) of
             true ->
-                file:consult(UsersInfoPath);
+                {ok, Term} = file:consult(UsersInfoPath),
+                Term;
             false ->
                 #{}
         end,
@@ -316,7 +317,7 @@ handle_call({user, Username}, _From, State) ->
     {reply, Result, State};
 handle_call(all_users, _From, #state{all_users = AllUsers} = State) ->
     {reply, AllUsers, State};
-handle_call(online_users, _From, #state{online_in_users = OnlineUsers} = State) ->
+handle_call(online_users, _From, #state{online_users = OnlineUsers} = State) ->
     {reply, OnlineUsers, State}.
 
 %%--------------------------------------------------------------------
@@ -341,7 +342,7 @@ handle_cast({analyze_log, #sb_message{
     content = Content
 }}, #state{
     user_info_path = UsersInfoPath,
-    online_in_users = OnlineUsers,
+    online_users = OnlineUsers,
     all_users = AllUsers
 } = State) ->
     UpdatedState =
@@ -389,7 +390,7 @@ handle_cast({analyze_log, #sb_message{
 
                 State#state{
                     all_users = UpdatedAllUsers,
-                    online_in_users = UpdatedOnlineUsers
+                    online_users = UpdatedOnlineUsers
                 };
             nomatch ->
                 State
