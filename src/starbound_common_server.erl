@@ -21,7 +21,8 @@
     all_server_users/0,
     add_user/2,
     user/1,
-    all_users/0
+    all_users/0,
+    online_users/0
 ]).
 
 %% gen_server callbacks
@@ -53,6 +54,7 @@
 }).
 
 -record(state, {
+    user_info_path :: file:filename(),
     sbboot_config_path :: file:filename(),
     sbboot_config :: map(),
     online_in_users = #{} :: #{Username :: binary() => #player_info{}},
@@ -162,7 +164,17 @@ user(Username) ->
 %%--------------------------------------------------------------------
 -spec all_users() -> map().
 all_users() ->
-    gen_server:call(?SERVER, all_users).
+    gen_server:call({globa, ?SERVER}, all_users).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get online users info.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec online_users() -> map().
+online_users() ->
+    gen_server:call({globa, ?SERVER}, online_users).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -211,6 +223,7 @@ init(SbbConfigPath) ->
         end),
 
     {ok, #state{
+        user_info_path = UsersInfoPath,
         sbboot_config = SbbootConfig,
         sbboot_config_path = SbbConfigPath,
         all_users = AllUsers
@@ -255,15 +268,16 @@ analyze_log(LineBin) ->
     all_configs |
     all_server_users |
     all_users |
+    online_users |
     {add_user, Username, Password} |
     {user, Username},
 
-    Reply :: add_user_status() | term() | AllUsers | undefined,
+    Reply :: add_user_status() | term() | Users | undefined,
 
     Key :: binary(),
     Username :: binary(),
     Password :: binary(),
-    AllUsers :: map(),
+    Users :: map(),
 
     From :: {pid(), Tag :: term()}, % generic term
     State :: #state{},
@@ -301,7 +315,9 @@ handle_call({user, Username}, _From, State) ->
              end,
     {reply, Result, State};
 handle_call(all_users, _From, #state{all_users = AllUsers} = State) ->
-    {reply, AllUsers, State}.
+    {reply, AllUsers, State};
+handle_call(online_users, _From, #state{online_in_users = OnlineUsers} = State) ->
+    {reply, OnlineUsers, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -324,6 +340,7 @@ handle_cast(stop, State) ->
 handle_cast({analyze_log, #sb_message{
     content = Content
 }}, #state{
+    user_info_path = UsersInfoPath,
     online_in_users = OnlineUsers,
     all_users = AllUsers
 } = State) ->
@@ -363,6 +380,12 @@ handle_cast({analyze_log, #sb_message{
                 UpdatedOnlineUsers = OnlineUsers#{
                     Username => CurPlayerInfo
                 },
+
+                spawn(
+                    fun() ->
+                        UpdatedAllUsersBin = io_lib:format("~tp.", [UpdatedAllUsers]),
+                        file:write_file(UsersInfoPath, UpdatedAllUsersBin)
+                    end),
 
                 State#state{
                     all_users = UpdatedAllUsers,
