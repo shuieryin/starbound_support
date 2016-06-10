@@ -226,7 +226,7 @@ init(SbbConfigPath) ->
 analyze_log(LineBin) ->
     case re:run(LineBin, <<"^\\[(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]\s+(\\S*):\\s+(\\S*):\\s+(.*)">>, [{capture, all_but_first, binary}]) of
         {match, [Time, Type, Server, Content]} ->
-            gen_server:cast(?SERVER, {analyze_log, #sb_message{
+            gen_server:cast({global, ?SERVER}, {analyze_log, #sb_message{
                 time = Time,
                 type = binary_to_atom(Type, utf8),
                 server = Server,
@@ -327,47 +327,52 @@ handle_cast({analyze_log, #sb_message{
     online_in_users = OnlineUsers,
     all_users = AllUsers
 } = State) ->
-    case re:run(Content, <<"^Logged\\sin\\saccount\\s''(\\S*)''\\sas\\splayer\\s'(\\S*)'\\sfrom\\saddress\\s(0000:0000:0000:0000:0000:ffff:\\S{4}:\\S{4})">>, [{capture, all_but_first, binary}]) of
-        {match, [Username, PlayerName, PlayerAddr]} ->
-            Timestamp = os:timestamp(),
-            {ok, Ipv4Addr} = elib:ipv6_2_ipv4(PlayerAddr),
+    UpdatedState =
+        case re:run(Content, <<"^Logged\\sin\\saccount\\s''(\\S*)''\\sas\\splayer\\s'(\\S*)'\\sfrom\\saddress\\s(0000:0000:0000:0000:0000:ffff:\\S{4}:\\S{4})">>, [{capture, all_but_first, binary}]) of
+            {match, [Username, PlayerName, PlayerAddr]} ->
+                Timestamp = os:timestamp(),
+                {ok, Ipv4Addr} = elib:ipv6_2_ipv4(PlayerAddr),
 
-            CurPlayerInfo = #player_info{
-                player_name = PlayerName,
-                ip_addr = Ipv4Addr,
-                last_login_time = Timestamp
-            },
+                CurPlayerInfo = #player_info{
+                    player_name = PlayerName,
+                    ip_addr = Ipv4Addr,
+                    last_login_time = Timestamp
+                },
 
-            UpdatedAllUsers =
-                case maps:get(Username, AllUsers, undefined) of
-                    undefined ->
-                        AllUsers#{
-                            Username => #user_info{
-                                username = Username,
-                                last_login_time = Timestamp,
-                                player_infos = #{PlayerName => CurPlayerInfo}
+                UpdatedAllUsers =
+                    case maps:get(Username, AllUsers, undefined) of
+                        undefined ->
+                            AllUsers#{
+                                Username => #user_info{
+                                    username = Username,
+                                    last_login_time = Timestamp,
+                                    player_infos = #{PlayerName => CurPlayerInfo}
+                                }
+                            };
+                        #user_info{
+                            player_infos = PlayerInfos
+                        } = ExistingUser ->
+                            AllUsers#{
+                                Username := ExistingUser#user_info{
+                                    last_login_time = Timestamp,
+                                    player_infos = PlayerInfos#{PlayerName => CurPlayerInfo}
+                                }
                             }
-                        };
-                    #user_info{
-                        player_infos = PlayerInfos
-                    } = ExistingUser ->
-                        AllUsers#{
-                            Username := ExistingUser#user_info{
-                                last_login_time = Timestamp,
-                                player_infos = PlayerInfos#{PlayerName => CurPlayerInfo}
-                            }
-                        }
-                end,
+                    end,
 
-            UpdatedOnlineUsers = OnlineUsers#{
-                Username => CurPlayerInfo
-            }
-    end,
+                UpdatedOnlineUsers = OnlineUsers#{
+                    Username => CurPlayerInfo
+                },
 
-    {noreply, State#state{
-        all_users = UpdatedAllUsers,
-        online_in_users = UpdatedOnlineUsers
-    }}.
+                State#state{
+                    all_users = UpdatedAllUsers,
+                    online_in_users = UpdatedOnlineUsers
+                };
+            nomatch ->
+                State
+        end,
+
+    {noreply, UpdatedState}.
 
 %%--------------------------------------------------------------------
 %% @private
