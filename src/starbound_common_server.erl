@@ -212,7 +212,7 @@ init(SbbConfigPath) ->
     AllUsers =
         case filelib:is_regular(UsersInfoPath) of
             true ->
-                {ok, Term} = file:consult(UsersInfoPath),
+                {ok, [Term]} = file:consult(UsersInfoPath),
                 Term;
             false ->
                 #{}
@@ -338,65 +338,10 @@ handle_call(online_users, _From, #state{online_users = OnlineUsers} = State) ->
     Reason :: term(). % generic term
 handle_cast(stop, State) ->
     {stop, normal, State};
-handle_cast({analyze_log, #sb_message{
-    content = Content
-}}, #state{
-    user_info_path = UsersInfoPath,
-    online_users = OnlineUsers,
-    all_users = AllUsers
-} = State) ->
-    UpdatedState =
-        case re:run(Content, <<"^Logged\\sin\\saccount\\s''(\\S*)''\\sas\\splayer\\s'(\\S*)'\\sfrom\\saddress\\s(0000:0000:0000:0000:0000:ffff:\\S{4}:\\S{4})">>, [{capture, all_but_first, binary}]) of
-            {match, [Username, PlayerName, PlayerAddr]} ->
-                Timestamp = os:timestamp(),
-                {ok, Ipv4Addr} = elib:ipv6_2_ipv4(PlayerAddr),
-
-                CurPlayerInfo = #player_info{
-                    player_name = PlayerName,
-                    ip_addr = Ipv4Addr,
-                    last_login_time = Timestamp
-                },
-
-                UpdatedAllUsers =
-                    case maps:get(Username, AllUsers, undefined) of
-                        undefined ->
-                            AllUsers#{
-                                Username => #user_info{
-                                    username = Username,
-                                    last_login_time = Timestamp,
-                                    player_infos = #{PlayerName => CurPlayerInfo}
-                                }
-                            };
-                        #user_info{
-                            player_infos = PlayerInfos
-                        } = ExistingUser ->
-                            AllUsers#{
-                                Username := ExistingUser#user_info{
-                                    last_login_time = Timestamp,
-                                    player_infos = PlayerInfos#{PlayerName => CurPlayerInfo}
-                                }
-                            }
-                    end,
-
-                UpdatedOnlineUsers = OnlineUsers#{
-                    Username => CurPlayerInfo
-                },
-
-                spawn(
-                    fun() ->
-                        UpdatedAllUsersBin = io_lib:format("~tp.", [UpdatedAllUsers]),
-                        file:write_file(UsersInfoPath, UpdatedAllUsersBin)
-                    end),
-
-                State#state{
-                    all_users = UpdatedAllUsers,
-                    online_users = UpdatedOnlineUsers
-                };
-            nomatch ->
-                State
-        end,
-
-    {noreply, UpdatedState}.
+handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
+    UpdatedState = handle_login(Content, State),
+    UpdatedState1 = handle_logout(Content, UpdatedState),
+    {noreply, UpdatedState1}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -520,3 +465,94 @@ add_user(Username, Password, #state{
             }
         }
     }.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Handle login
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec handle_login(Content :: binary(), #state{}) -> #state{}.
+handle_login(Content, #state{
+    user_info_path = UsersInfoPath,
+    online_users = OnlineUsers,
+    all_users = AllUsers
+} = State) ->
+    case re:run(Content, <<"^Logged\\sin\\saccount\\s''(\\S*)''\\sas\\splayer\\s'(\\S*)'\\sfrom\\saddress\\s(0000:0000:0000:0000:0000:ffff:\\S{4}:\\S{4})">>, [{capture, all_but_first, binary}]) of
+        {match, [Username, PlayerName, PlayerAddr]} ->
+            Timestamp = os:timestamp(),
+            {ok, Ipv4Addr} = elib:ipv6_2_ipv4(PlayerAddr),
+
+            CurPlayerInfo = #player_info{
+                player_name = PlayerName,
+                ip_addr = Ipv4Addr,
+                last_login_time = Timestamp
+            },
+
+            UpdatedAllUsers =
+                case maps:get(Username, AllUsers, undefined) of
+                    undefined ->
+                        AllUsers#{
+                            Username => #user_info{
+                                username = Username,
+                                last_login_time = Timestamp,
+                                player_infos = #{PlayerName => CurPlayerInfo}
+                            }
+                        };
+                    #user_info{
+                        player_infos = PlayerInfos
+                    } = ExistingUser ->
+                        AllUsers#{
+                            Username := ExistingUser#user_info{
+                                last_login_time = Timestamp,
+                                player_infos = PlayerInfos#{PlayerName => CurPlayerInfo}
+                            }
+                        }
+                end,
+
+            UpdatedOnlineUsers = OnlineUsers#{
+                Username => CurPlayerInfo
+            },
+
+            spawn(
+                fun() ->
+                    UpdatedAllUsersBin = io_lib:format("~tp.", [UpdatedAllUsers]),
+                    file:write_file(UsersInfoPath, UpdatedAllUsersBin)
+                end),
+
+            State#state{
+                all_users = UpdatedAllUsers,
+                online_users = UpdatedOnlineUsers
+            };
+        nomatch ->
+            State
+    end.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Handle logout
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec handle_logout(Content :: binary(), #state{}) -> #state{}.
+handle_logout(Content, #state{
+    online_users = OnlineUsers
+} = State) ->
+    case re:run(Content, <<"^Client\\s'(\\S*)'\\s<(\\d*)>\\s\\((\\S*\\))\\sdisconnected">>, [{capture, all_but_first, binary}]) of
+        {match, [PlayerName, _ServerLoginCount, _PlayerAddr]} ->
+            LogoutUsername = maps:fold(
+                fun(Username, #player_info{player_name = CurPlayerName}, AccUsername) ->
+                    if
+                        PlayerName == CurPlayerName ->
+                            Username;
+                        true ->
+                            AccUsername
+                    end
+                end, undefined, OnlineUsers),
+
+            State#state{
+                online_users = maps:remove(LogoutUsername, OnlineUsers)
+            };
+        nomatch ->
+            State
+    end.
