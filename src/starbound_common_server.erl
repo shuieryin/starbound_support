@@ -164,7 +164,7 @@ user(Username) ->
 %%--------------------------------------------------------------------
 -spec all_users() -> map().
 all_users() ->
-    gen_server:call({globa, ?SERVER}, all_users).
+    gen_server:call({global, ?SERVER}, all_users).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -174,7 +174,7 @@ all_users() ->
 %%--------------------------------------------------------------------
 -spec online_users() -> map().
 online_users() ->
-    gen_server:call({globa, ?SERVER}, online_users).
+    gen_server:call({global, ?SERVER}, online_users).
 
 %%%===================================================================
 %%% gen_server callbacks
