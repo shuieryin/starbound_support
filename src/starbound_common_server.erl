@@ -18,9 +18,10 @@
     stop/0,
     get/1,
     all_configs/0,
-    all_users/0,
+    all_server_users/0,
     add_user/2,
-    user/1
+    user/1,
+    all_users/0
 ]).
 
 %% gen_server callbacks
@@ -125,9 +126,9 @@ all_configs() ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec all_users() -> map().
-all_users() ->
-    gen_server:call({global, ?SERVER}, all_users).
+-spec all_server_users() -> map().
+all_server_users() ->
+    gen_server:call({global, ?SERVER}, all_server_users).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -152,6 +153,16 @@ add_user(Username, Password) ->
     Password :: binary().
 user(Username) ->
     gen_server:call({global, ?SERVER}, {user, Username}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get all users info.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec all_users() -> map().
+all_users() ->
+    gen_server:call(?SERVER, all_users).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -242,15 +253,17 @@ analyze_log(LineBin) ->
 
     Request :: {get, Key} |
     all_configs |
+    all_server_users |
     all_users |
     {add_user, Username, Password} |
     {user, Username},
 
-    Reply :: add_user_status() | term() | undefined,
+    Reply :: add_user_status() | term() | AllUsers | undefined,
 
     Key :: binary(),
     Username :: binary(),
     Password :: binary(),
+    AllUsers :: map(),
 
     From :: {pid(), Tag :: term()}, % generic term
     State :: #state{},
@@ -264,7 +277,7 @@ handle_call(all_configs, _From, #state{
     sbboot_config = SbbConfig
 } = State) ->
     {reply, SbbConfig, State};
-handle_call(all_users, _From, State) ->
+handle_call(all_server_users, _From, State) ->
     {reply, serverUsers(State), State};
 handle_call({add_user, Username, Password}, _From, State) ->
     #state{
@@ -286,7 +299,9 @@ handle_call({user, Username}, _From, State) ->
                  #{<<"password">> := Password} ->
                      Password
              end,
-    {reply, Result, State}.
+    {reply, Result, State};
+handle_call(all_users, _From, #state{all_users = AllUsers} = State) ->
+    {reply, AllUsers, State}.
 
 %%--------------------------------------------------------------------
 %% @private

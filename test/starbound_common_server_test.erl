@@ -19,7 +19,7 @@
 -include_lib("starbound_support_test.hrl").
 
 -record(state, {
-    all_users :: map()
+    all_server_users :: map()
 }).
 
 %%%===================================================================
@@ -28,7 +28,7 @@
 
 test(_Config) ->
     ModelState = #state{
-        all_users = starbound_common_server:all_users()
+        all_server_users = starbound_common_server:all_server_users()
     },
 
     RandomFuncs = [
@@ -48,7 +48,7 @@ run_test(RandomFuncs, ModelState) ->
 %%% Internal functions
 %%%===================================================================
 user(#state{
-    all_users = AllUsers
+    all_server_users = AllUsers
 }) ->
     Username = ?ONE_OF([<<"undefined_user">> | maps:keys(AllUsers)]),
     starbound_common_server:user(Username).
