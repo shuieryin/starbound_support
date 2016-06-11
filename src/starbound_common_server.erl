@@ -23,7 +23,7 @@
     user/1,
     all_users/0,
     online_users/0,
-    send_message/0
+    restart_sb/0
 ]).
 
 %% gen_server callbacks
@@ -57,11 +57,11 @@
 
 -record(state, {
     user_info_path :: file:filename(),
+    sbfolder_path :: file:filename(),
     sbboot_config_path :: file:filename(),
     sbboot_config :: map(),
     online_users = #{} :: #{Username :: binary() => #player_info{}},
-    all_users = #{} :: #{Username :: binary() => #user_info{}},
-    sb_socket :: gen_tcp:socket()
+    all_users = #{} :: #{Username :: binary() => #user_info{}}
 }).
 
 -record(sb_message, {
@@ -185,9 +185,9 @@ online_users() ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec send_message() -> ok.
-send_message() ->
-    gen_server:cast({global, ?SERVER}, send_message).
+-spec restart_sb() -> ok.
+restart_sb() ->
+    gen_server:cast({global, ?SERVER}, restart_sb).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -219,6 +219,7 @@ init(SbbConfigPath) ->
     io:format("started~n"),
 
     ServerHomePath = "/home/steam/steamcmd/starbound/giraffe_storage",
+    SbFolderPath = "/home/steam/steamcmd/starbound/linux64",
     LogPath = filename:join([ServerHomePath, "starbound_server.log"]),
     UsersInfoPath = filename:join([ServerHomePath, "users_info"]),
 
@@ -236,14 +237,12 @@ init(SbbConfigPath) ->
             elib:cmd("tail -fn0 " ++ LogPath, fun analyze_log/1)
         end),
 
-    {ok, SbSocket} = gen_udp:open(21025),
-
     {ok, #state{
         user_info_path = UsersInfoPath,
+        sbfolder_path = SbFolderPath,
         sbboot_config = SbbootConfig,
         sbboot_config_path = SbbConfigPath,
-        all_users = AllUsers,
-        sb_socket = SbSocket
+        all_users = AllUsers
     }}.
 
 %%--------------------------------------------------------------------
@@ -348,7 +347,7 @@ handle_call(online_users, _From, #state{online_users = OnlineUsers} = State) ->
     {noreply, NewState, timeout() | hibernate} |
     {stop, Reason, NewState} when
 
-    Request :: {analyze_log, #sb_message{}} | send_message | stop, % generic term
+    Request :: {analyze_log, #sb_message{}} | restart_sb | stop, % generic term
 
     State :: #state{},
     NewState :: State,
@@ -359,9 +358,8 @@ handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
     UpdatedState = handle_login(Content, State),
     UpdatedState1 = handle_logout(Content, UpdatedState),
     {noreply, UpdatedState1};
-handle_cast(send_message, #state{sb_socket = SbSocket} = State) ->
-    io:format("SbSocket:~p~n", [SbSocket]),
-    gen_udp:send(SbSocket, elib:hexstr_to_bin("3804c067305a0c01dfff7f27080d3233333333333333333333333309010a0a426c6162626572696e670f06831508010c010000")),
+handle_cast(restart_sb, #state{sbboot_config_path = SbbConfigPath} = State) ->
+    os:cmd(filename:join([SbbConfigPath, "sb_server.sh"] ++ " restart")),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
