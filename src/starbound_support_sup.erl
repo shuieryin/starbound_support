@@ -72,7 +72,7 @@ init(SbbConfigPath) ->
             },
 
             {InfoServerName,
-                {information_server, start_link, []},
+                {information_server, start_link, [InfoServerName]},
                 permanent,
                 10000,
                 worker,
