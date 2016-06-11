@@ -591,7 +591,8 @@ handle_login(Content, #state{
 %%--------------------------------------------------------------------
 -spec handle_logout(Content :: binary(), #state{}) -> #state{}.
 handle_logout(Content, #state{
-    online_users = OnlineUsers
+    online_users = OnlineUsers,
+    pending_restart_usernames = PendingRestartUsernames
 } = State) ->
     case re:run(Content, <<"^Client\\s'(\\S*)'\\s<(\\d*)>\\s\\((\\S*\\))\\sdisconnected">>, [{capture, all_but_first, binary}]) of
         {match, [PlayerName, _ServerLoginCount, _PlayerAddr]} ->
@@ -607,10 +608,10 @@ handle_logout(Content, #state{
 
             UpdatedOnlineUsers = maps:remove(LogoutUsername, OnlineUsers),
 
-            ok = case maps:size(UpdatedOnlineUsers) of
-                     0 ->
+            ok = case maps:size(UpdatedOnlineUsers) == 0 andalso length(PendingRestartUsernames) > 0 of
+                     true ->
                          restart_sb_cmd(State);
-                     _Else ->
+                     false ->
                          ok
                  end,
 
