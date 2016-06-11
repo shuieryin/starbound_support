@@ -64,8 +64,7 @@
     sbboot_config :: map(),
     online_users = #{} :: #{Username :: binary() => #player_info{}},
     all_users = #{} :: #{Username :: binary() => #user_info{}},
-    pending_restart_usernames = [] :: [binary()],
-    is_pending_restart_sb = false :: boolean()
+    pending_restart_usernames = [] :: [binary()]
 }).
 
 -record(sb_message, {
@@ -303,12 +302,13 @@ analyze_log(LineBin) ->
     {add_user, Username, Password} |
     {user, Username},
 
-    Reply :: add_user_status() | term() | Users | undefined | safe_restart_status(),
+    Reply :: add_user_status() | term() | Users | undefined | safe_restart_status() | {Password, IsPendingRestart},
 
     Key :: binary(),
     Username :: binary(),
     Password :: binary(),
     Users :: map(),
+    IsPendingRestart :: boolean(),
 
     From :: {pid(), Tag :: term()}, % generic term
     State :: #state{},
@@ -341,17 +341,18 @@ handle_call({add_user, Username, Password}, _From, #state{online_users = OnlineU
             {reply, done, UpdatedState};
         _Else ->
             {reply, pending, UpdatedState#state{
-                is_pending_restart_sb = true,
                 pending_restart_usernames = [Username | PendingRestartUsernames]
             }}
     end;
-handle_call({user, Username}, _From, State) ->
+handle_call({user, Username}, _From, #state{
+    pending_restart_usernames = PendingRestartUsernames
+} = State) ->
     AllUsers = serverUsers(State),
     Result = case maps:get(Username, AllUsers, undefined) of
                  undefined ->
                      undefined;
                  #{<<"password">> := Password} ->
-                     Password
+                     {Password, lists:member(Username, PendingRestartUsernames)}
              end,
     {reply, Result, State};
 handle_call(all_users, _From, #state{all_users = AllUsers} = State) ->
@@ -364,9 +365,7 @@ handle_call(safe_restart_sb, _From, #state{online_users = OnlineUsers} = State) 
             ok = restart_sb_cmd(State),
             {reply, done, State};
         _Else ->
-            {reply, pending, State#state{
-                is_pending_restart_sb = true
-            }}
+            {reply, pending, State}
     end.
 
 %%--------------------------------------------------------------------
@@ -632,8 +631,7 @@ handle_restarted(Content, State) ->
         {match, _Match} ->
             State#state{
                 online_users = #{},
-                pending_restart_usernames = [],
-                is_pending_restart_sb = false
+                pending_restart_usernames = []
             };
         nomatch ->
             State
