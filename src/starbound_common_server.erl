@@ -236,7 +236,7 @@ init(SbbConfigPath) ->
             elib:cmd("tail -fn0 " ++ LogPath, fun analyze_log/1)
         end),
 
-    {ok, SbSocket} = gen_tcp:listen(21025, [{ip, {127, 0, 0, 1}}]),
+    {ok, SbSocket} = gen_udp:open(21025),
 
     {ok, #state{
         user_info_path = UsersInfoPath,
@@ -361,7 +361,7 @@ handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
     {noreply, UpdatedState1};
 handle_cast(send_message, #state{sb_socket = SbSocket} = State) ->
     io:format("SbSocket:~p~n", [SbSocket]),
-    gen_tcp:send(SbSocket, elib:hexstr_to_bin("3804c067305a0c01dfff7f27080d3233333333333333333333333309010a0a426c6162626572696e670f06831508010c010000")),
+    gen_udp:send(SbSocket, elib:hexstr_to_bin("3804c067305a0c01dfff7f27080d3233333333333333333333333309010a0a426c6162626572696e670f06831508010c010000")),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
