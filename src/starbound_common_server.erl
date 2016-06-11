@@ -358,8 +358,8 @@ handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
     UpdatedState = handle_login(Content, State),
     UpdatedState1 = handle_logout(Content, UpdatedState),
     {noreply, UpdatedState1};
-handle_cast(restart_sb, #state{sbboot_config_path = SbbConfigPath} = State) ->
-    os:cmd(filename:join([SbbConfigPath, "sb_server.sh"] ++ " restart")),
+handle_cast(restart_sb, #state{sbfolder_path = SbFolderPath} = State) ->
+    os:cmd(filename:join([SbFolderPath, "sb_server.sh"] ++ " restart")),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
