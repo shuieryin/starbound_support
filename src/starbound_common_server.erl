@@ -646,7 +646,7 @@ handle_logout(Content, #state{
 %%--------------------------------------------------------------------
 -spec handle_restarted(Content :: binary(), #state{}) -> #state{}.
 handle_restarted(Content, State) ->
-    case re:run(Content, <<"Done\\spreparing\\sStar\\:\\:Root">>, []) of
+    case re:run(Content, <<"^Starting\\sUniverseServer">>, []) of
         {match, _Match} ->
             error_logger:info_msg("Server restarted~n"),
             State#state{
