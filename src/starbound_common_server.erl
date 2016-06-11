@@ -573,6 +573,8 @@ handle_login(Content, #state{
                     file:write_file(UsersInfoPath, UpdatedAllUsersBin)
                 end),
 
+            error_logger:info_msg("User <~n> Player <~n> logged out.~n", [Username, PlayerName]),
+
             State#state{
                 all_users = UpdatedAllUsers,
                 online_users = UpdatedOnlineUsers
@@ -612,6 +614,8 @@ handle_logout(Content, #state{
                          ok
                  end,
 
+            error_logger:info_msg("Player <~n> logged out.~n", [PlayerName]),
+
             State#state{
                 online_users = UpdatedOnlineUsers
             };
@@ -629,6 +633,7 @@ handle_logout(Content, #state{
 handle_restarted(Content, State) ->
     case re:run(Content, <<"^Done\\spreparing\\sStar::Root\\">>) of
         {match, _Match} ->
+            error_logger:info_msg("Server restarted~n"),
             State#state{
                 online_users = #{},
                 pending_restart_usernames = []
@@ -645,5 +650,6 @@ handle_restarted(Content, State) ->
 %%--------------------------------------------------------------------
 -spec restart_sb_cmd(#state{}) -> ok.
 restart_sb_cmd(#state{sbfolder_path = SbFolderPath}) ->
+    error_logger:info_msg("Execute server restart command~n"),
     os:cmd(filename:join([SbFolderPath, "sb_server.sh"]) ++ " restart"),
     ok.
