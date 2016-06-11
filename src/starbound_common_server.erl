@@ -24,7 +24,8 @@
     all_users/0,
     online_users/0,
     restart_sb/0,
-    safe_restart_sb/0
+    safe_restart_sb/0,
+    pending_usernames/0
 ]).
 
 %% gen_server callbacks
@@ -202,6 +203,16 @@ restart_sb() ->
 safe_restart_sb() ->
     gen_server:call({global, ?SERVER}, safe_restart_sb).
 
+%%--------------------------------------------------------------------
+%% @doc
+%% Get pending restart usernames.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec pending_usernames() -> [binary()].
+pending_usernames() ->
+    gen_server:call({global, ?SERVER}, pending_usernames).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -297,12 +308,13 @@ analyze_log(LineBin) ->
     all_configs |
     all_server_users |
     safe_restart_sb |
+    pending_usernames |
     all_users |
     online_users |
     {add_user, Username, Password} |
     {user, Username},
 
-    Reply :: add_user_status() | term() | Users | undefined | safe_restart_status() | {Password, IsPendingRestart},
+    Reply :: add_user_status() | term() | Users | undefined | safe_restart_status() | {Password, IsPendingRestart} | [Username],
 
     Key :: binary(),
     Username :: binary(),
@@ -366,7 +378,9 @@ handle_call(safe_restart_sb, _From, #state{online_users = OnlineUsers} = State) 
             {reply, done, State};
         _Else ->
             {reply, pending, State}
-    end.
+    end;
+handle_call(pending_usernames, _From, #state{pending_restart_usernames = PendingRestartUsernames} = State) ->
+    {reply, PendingRestartUsernames, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -573,7 +587,7 @@ handle_login(Content, #state{
                     file:write_file(UsersInfoPath, UpdatedAllUsersBin)
                 end),
 
-            error_logger:info_msg("User <~n> Player <~n> logged out.~n", [Username, PlayerName]),
+            error_logger:info_msg("User <~p> Player <~p> logged out.~n", [Username, PlayerName]),
 
             State#state{
                 all_users = UpdatedAllUsers,
@@ -632,7 +646,7 @@ handle_logout(Content, #state{
 %%--------------------------------------------------------------------
 -spec handle_restarted(Content :: binary(), #state{}) -> #state{}.
 handle_restarted(Content, State) ->
-    case re:run(Content, <<"^Done\\spreparing\\sStar::Root">>, []) of
+    case re:run(Content, <<"Done\\spreparing\\sStar\\:\\:Root">>, []) of
         {match, _Match} ->
             error_logger:info_msg("Server restarted~n"),
             State#state{
