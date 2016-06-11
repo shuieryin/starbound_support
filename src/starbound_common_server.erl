@@ -22,7 +22,8 @@
     add_user/2,
     user/1,
     all_users/0,
-    online_users/0
+    online_users/0,
+    send_message/0
 ]).
 
 %% gen_server callbacks
@@ -43,7 +44,8 @@
 -record(player_info, {
     player_name :: binary(),
     ip_addr :: inet:ip4_address(),
-    last_login_time :: erlang:timestamp()
+    last_login_time :: erlang:timestamp(),
+    agree_restart = false :: boolean()
 }).
 
 -record(user_info, {
@@ -58,7 +60,8 @@
     sbboot_config_path :: file:filename(),
     sbboot_config :: map(),
     online_users = #{} :: #{Username :: binary() => #player_info{}},
-    all_users = #{} :: #{Username :: binary() => #user_info{}}
+    all_users = #{} :: #{Username :: binary() => #user_info{}},
+    sb_socket :: socket()
 }).
 
 -record(sb_message, {
@@ -176,6 +179,16 @@ all_users() ->
 online_users() ->
     gen_server:call({global, ?SERVER}, online_users).
 
+%%--------------------------------------------------------------------
+%% @doc
+%% Send message to starbound server.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec send_message() -> ok.
+send_message() ->
+    gen_server:cast({global, ?SERVER}, send_message).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -223,11 +236,14 @@ init(SbbConfigPath) ->
             elib:cmd("tail -fn0 " ++ LogPath, fun analyze_log/1)
         end),
 
+    {ok, SbSocket} = gen_tcp:listen(21025, [{ip, {127, 0, 0, 1}}]),
+
     {ok, #state{
         user_info_path = UsersInfoPath,
         sbboot_config = SbbootConfig,
         sbboot_config_path = SbbConfigPath,
-        all_users = AllUsers
+        all_users = AllUsers,
+        sb_socket = SbSocket
     }}.
 
 %%--------------------------------------------------------------------
@@ -332,7 +348,8 @@ handle_call(online_users, _From, #state{online_users = OnlineUsers} = State) ->
     {noreply, NewState, timeout() | hibernate} |
     {stop, Reason, NewState} when
 
-    Request :: {analyze_log, #sb_message{}} | stop, % generic term
+    Request :: {analyze_log, #sb_message{}} | send_message | stop, % generic term
+
     State :: #state{},
     NewState :: State,
     Reason :: term(). % generic term
@@ -341,7 +358,11 @@ handle_cast(stop, State) ->
 handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
     UpdatedState = handle_login(Content, State),
     UpdatedState1 = handle_logout(Content, UpdatedState),
-    {noreply, UpdatedState1}.
+    {noreply, UpdatedState1};
+handle_cast(send_message, #state{sb_socket = SbSocket} = State) ->
+    io:format("SbSocket:~p~n", [SbSocket]),
+    gen_tcp:send(SbSocket, elib:hexstr_to_bin("3804c067305a0c01dfff7f27080d3233333333333333333333333309010a0a426c6162626572696e670f06831508010c010000")),
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
