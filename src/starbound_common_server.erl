@@ -61,7 +61,7 @@
     sbboot_config :: map(),
     online_users = #{} :: #{Username :: binary() => #player_info{}},
     all_users = #{} :: #{Username :: binary() => #user_info{}},
-    sb_socket :: socket()
+    sb_socket :: gen_tcp:socket()
 }).
 
 -record(sb_message, {
