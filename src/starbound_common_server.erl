@@ -587,7 +587,7 @@ handle_login(Content, #state{
                     file:write_file(UsersInfoPath, UpdatedAllUsersBin)
                 end),
 
-            error_logger:info_msg("User <~p> Player <~p> logged out.~n", [Username, PlayerName]),
+            error_logger:info_msg("User <~p> Player <~p> logged in.~n", [Username, PlayerName]),
 
             State#state{
                 all_users = UpdatedAllUsers,
@@ -629,7 +629,7 @@ handle_logout(Content, #state{
                          ok
                  end,
 
-            error_logger:info_msg("Player <~n> logged out.~n", [PlayerName]),
+            error_logger:info_msg("Player <~p> logged out.~n", [PlayerName]),
 
             State#state{
                 online_users = UpdatedOnlineUsers
