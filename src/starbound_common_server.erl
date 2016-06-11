@@ -627,7 +627,7 @@ handle_logout(Content, #state{
 %%--------------------------------------------------------------------
 -spec handle_restarted(Content :: binary(), #state{}) -> #state{}.
 handle_restarted(Content, State) ->
-    case re:run(Content, <<"^Done\\spreparing\\sStar::Root\\.$">>) of
+    case re:run(Content, <<"^Done\\spreparing\\sStar::Root\\">>) of
         {match, _Match} ->
             State#state{
                 online_users = #{},
