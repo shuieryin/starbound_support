@@ -23,7 +23,8 @@
     user/1,
     all_users/0,
     online_users/0,
-    restart_sb/0
+    restart_sb/0,
+    safe_restart_sb/0
 ]).
 
 %% gen_server callbacks
@@ -40,6 +41,7 @@
 -define(SERVER, ?MODULE).
 
 -type add_user_status() :: ok | user_exist.
+-type safe_restart_status() :: done | pending.
 
 -record(player_info, {
     player_name :: binary(),
@@ -61,7 +63,9 @@
     sbboot_config_path :: file:filename(),
     sbboot_config :: map(),
     online_users = #{} :: #{Username :: binary() => #player_info{}},
-    all_users = #{} :: #{Username :: binary() => #user_info{}}
+    all_users = #{} :: #{Username :: binary() => #user_info{}},
+    pending_restart_usernames = [] :: [binary()],
+    is_pending_restart_sb = false :: boolean()
 }).
 
 -record(sb_message, {
@@ -189,6 +193,16 @@ online_users() ->
 restart_sb() ->
     gen_server:cast({global, ?SERVER}, restart_sb).
 
+%%--------------------------------------------------------------------
+%% @doc
+%% Send message to starbound server.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec safe_restart_sb() -> safe_restart_status().
+safe_restart_sb() ->
+    gen_server:call({global, ?SERVER}, safe_restart_sb).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -283,12 +297,13 @@ analyze_log(LineBin) ->
     Request :: {get, Key} |
     all_configs |
     all_server_users |
+    safe_restart_sb |
     all_users |
     online_users |
     {add_user, Username, Password} |
     {user, Username},
 
-    Reply :: add_user_status() | term() | Users | undefined,
+    Reply :: add_user_status() | term() | Users | undefined | safe_restart_status(),
 
     Key :: binary(),
     Username :: binary(),
@@ -309,7 +324,7 @@ handle_call(all_configs, _From, #state{
     {reply, SbbConfig, State};
 handle_call(all_server_users, _From, State) ->
     {reply, serverUsers(State), State};
-handle_call({add_user, Username, Password}, _From, State) ->
+handle_call({add_user, Username, Password}, _From, #state{online_users = OnlineUsers, pending_restart_usernames = PendingRestartUsernames} = State) ->
     #state{
         sbboot_config = SbbConfig,
         sbboot_config_path = SbbConfigPath
@@ -320,7 +335,16 @@ handle_call({add_user, Username, Password}, _From, State) ->
 
     error_logger:info_msg("Added username:[~p], password:[~p]", [Username, Password]),
 
-    {reply, ok, UpdatedState};
+    case maps:size(OnlineUsers) of
+        0 ->
+            ok = restart_sb_cmd(State),
+            {reply, done, UpdatedState};
+        _Else ->
+            {reply, pending, UpdatedState#state{
+                is_pending_restart_sb = true,
+                pending_restart_usernames = [Username | PendingRestartUsernames]
+            }}
+    end;
 handle_call({user, Username}, _From, State) ->
     AllUsers = serverUsers(State),
     Result = case maps:get(Username, AllUsers, undefined) of
@@ -333,7 +357,17 @@ handle_call({user, Username}, _From, State) ->
 handle_call(all_users, _From, #state{all_users = AllUsers} = State) ->
     {reply, AllUsers, State};
 handle_call(online_users, _From, #state{online_users = OnlineUsers} = State) ->
-    {reply, OnlineUsers, State}.
+    {reply, OnlineUsers, State};
+handle_call(safe_restart_sb, _From, #state{online_users = OnlineUsers} = State) ->
+    case maps:size(OnlineUsers) of
+        0 ->
+            ok = restart_sb_cmd(State),
+            {reply, done, State};
+        _Else ->
+            {reply, pending, State#state{
+                is_pending_restart_sb = true
+            }}
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -357,9 +391,10 @@ handle_cast(stop, State) ->
 handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
     UpdatedState = handle_login(Content, State),
     UpdatedState1 = handle_logout(Content, UpdatedState),
-    {noreply, UpdatedState1};
-handle_cast(restart_sb, #state{sbfolder_path = SbFolderPath} = State) ->
-    os:cmd(filename:join([SbFolderPath, "sb_server.sh"]) ++ " restart"),
+    UpdatedState2 = handle_restarted(Content, UpdatedState1),
+    {noreply, UpdatedState2};
+handle_cast(restart_sb, State) ->
+    ok = restart_sb_cmd(State),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -569,9 +604,48 @@ handle_logout(Content, #state{
                     end
                 end, undefined, OnlineUsers),
 
+            UpdatedOnlineUsers = maps:remove(LogoutUsername, OnlineUsers),
+
+            ok = case maps:size(UpdatedOnlineUsers) of
+                     0 ->
+                         restart_sb_cmd(State);
+                     _Else ->
+                         ok
+                 end,
+
             State#state{
-                online_users = maps:remove(LogoutUsername, OnlineUsers)
+                online_users = UpdatedOnlineUsers
             };
         nomatch ->
             State
     end.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Handle restarted
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec handle_restarted(Content :: binary(), #state{}) -> #state{}.
+handle_restarted(Content, State) ->
+    case re:run(Content, <<"^Done\\spreparing\\sStar::Root\\.$">>) of
+        {match, _Match} ->
+            State#state{
+                online_users = #{},
+                pending_restart_usernames = [],
+                is_pending_restart_sb = false
+            };
+        nomatch ->
+            State
+    end.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Restart Sb server cmd.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec restart_sb_cmd(#state{}) -> ok.
+restart_sb_cmd(#state{sbfolder_path = SbFolderPath}) ->
+    os:cmd(filename:join([SbFolderPath, "sb_server.sh"]) ++ " restart"),
+    ok.
