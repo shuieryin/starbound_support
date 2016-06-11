@@ -49,8 +49,10 @@ start_link(SbbConfigPath) ->
 -spec init(SbbConfigPath :: file:filename()) ->
     {ok, {SupFlags :: supervisor:sup_flags(), [ChildSpec :: supervisor:child_spec()]}} | ignore.
 init(SbbConfigPath) ->
-    [{_AppName, _AppVersion, _Applications, _ReleaseStatus}] = release_handler:which_releases(permanent),
+    [{AppName, _AppVersion, _Applications, _ReleaseStatus}] = release_handler:which_releases(permanent),
     erlang:set_cookie(node(), wechat_mud),
+
+    InfoServerName = list_to_atom(AppName ++ "_information_server"),
 
     RestartStrategy = one_for_one,
     MaxRestarts = 1000,
@@ -69,7 +71,7 @@ init(SbbConfigPath) ->
                 [starbound_common_server]
             },
 
-            {information_server,
+            {InfoServerName,
                 {information_server, start_link, []},
                 permanent,
                 10000,
