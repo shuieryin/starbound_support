@@ -666,5 +666,5 @@ handle_restarted(Content, State) ->
 -spec restart_sb_cmd(#state{}) -> ok.
 restart_sb_cmd(#state{sbfolder_path = SbFolderPath}) ->
     error_logger:info_msg("Execute server restart command~n"),
-    os:cmd("cd " ++ SbFolderPath ++ ";sb_server.sh restart"),
+    os:cmd("cd " ++ SbFolderPath ++ ";./sb_server.sh restart"),
     ok.
