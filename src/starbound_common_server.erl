@@ -261,13 +261,17 @@ init(SbbConfigPath) ->
             elib:cmd("tail -fn0 " ++ LogPath, fun analyze_log/1)
         end),
 
-    {ok, #state{
+    State = #state{
         user_info_path = UsersInfoPath,
         sbfolder_path = SbFolderPath,
         sbboot_config = SbbootConfig,
         sbboot_config_path = SbbConfigPath,
         all_users = AllUsers
-    }}.
+    },
+
+    restart_sb_cmd(State),
+
+    {ok, State}.
 
 %%--------------------------------------------------------------------
 %% @doc
