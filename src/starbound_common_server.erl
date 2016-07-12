@@ -549,7 +549,7 @@ handle_login(Content, #state{
     online_users = OnlineUsers,
     all_users = AllUsers
 } = State) ->
-    case re:run(Content, <<"^Logged\\sin\\saccount\\s''(\\S*)''\\sas\\splayer\\s'(\\S*)'\\sfrom\\saddress\\s(0000:0000:0000:0000:0000:ffff:\\S{4}:\\S{4})">>, [{capture, all_but_first, binary}]) of
+    case re:run(Content, <<"^Logged\\sin\\saccount\\s''(.*)''\\sas\\splayer\\s'(\\S*)'\\sfrom\\saddress\\s(0000:0000:0000:0000:0000:ffff:\\S{4}:\\S{4})">>, [{capture, all_but_first, binary}]) of
         {match, [Username, PlayerName, PlayerAddr]} ->
             Timestamp = os:timestamp(),
             {ok, Ipv4Addr} = elib:ipv6_2_ipv4(PlayerAddr),
@@ -612,7 +612,7 @@ handle_logout(Content, #state{
     online_users = OnlineUsers,
     pending_restart_usernames = PendingRestartUsernames
 } = State) ->
-    case re:run(Content, <<"^Client\\s'(\\S*)'\\s<(\\d*)>\\s\\((\\S*\\))\\sdisconnected">>, [{capture, all_but_first, binary}]) of
+    case re:run(Content, <<"^Client\\s'(.*)'\\s<(\\d*)>\\s\\((\\S*\\))\\sdisconnected">>, [{capture, all_but_first, binary}]) of
         {match, [PlayerName, _ServerLoginCount, _PlayerAddr]} ->
             LogoutUsername = maps:fold(
                 fun(Username, #player_info{player_name = CurPlayerName}, AccUsername) ->
@@ -670,5 +670,5 @@ handle_restarted(Content, State) ->
 -spec restart_sb_cmd(#state{}) -> ok.
 restart_sb_cmd(#state{sbfolder_path = SbFolderPath}) ->
     error_logger:info_msg("Execute server restart command~n"),
-    os:cmd("cd " ++ SbFolderPath ++ ";./sb_server.sh restart"),
+    os:cmd("cd " ++ SbFolderPath ++ ";./sb_server.sh start"),
     ok.
