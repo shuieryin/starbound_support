@@ -549,7 +549,7 @@ handle_login(Content, #state{
     online_users = OnlineUsers,
     all_users = AllUsers
 } = State) ->
-    case re:run(Content, <<"^Logged\\sin\\saccount\\s''(.*)''\\sas\\splayer\\s'(\\S*)'\\sfrom\\saddress\\s(0000:0000:0000:0000:0000:ffff:\\S{4}:\\S{4})">>, [{capture, all_but_first, binary}]) of
+    case re:run(Content, <<"^Logged\\sin\\saccount\\s''(\\S*)''\\sas\\splayer\\s'(.*)'\\sfrom\\saddress\\s(0000:0000:0000:0000:0000:ffff:\\S{4}:\\S{4})">>, [{capture, all_but_first, binary}]) of
         {match, [Username, PlayerName, PlayerAddr]} ->
             Timestamp = os:timestamp(),
             {ok, Ipv4Addr} = elib:ipv6_2_ipv4(PlayerAddr),
