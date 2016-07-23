@@ -505,8 +505,7 @@ format_status(Opt, StatusData) ->
 serverUsers(#state{
     sbboot_config = SbbConfig
 }) ->
-    DefaultConfig = maps:get(<<"defaultConfiguration">>, SbbConfig),
-    maps:get(<<"serverUsers">>, DefaultConfig).
+    maps:get(<<"serverUsers">>, SbbConfig).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -519,19 +518,15 @@ serverUsers(#state{
     Password :: binary().
 add_user(Username, Password, #state{
     sbboot_config = #{
-        <<"defaultConfiguration">> := #{
-            <<"serverUsers">> := ExistingServerUsers
-        } = DefaultConfig
+        <<"serverUsers">> := ExistingServerUsers
     } = SbbConfig
 } = State) ->
     State#state{
         sbboot_config = SbbConfig#{
-            <<"defaultConfiguration">> := DefaultConfig#{
-                <<"serverUsers">> := ExistingServerUsers#{
-                    Username => #{
-                        <<"admin">> => false,
-                        <<"password">> => Password
-                    }
+            <<"serverUsers">> := ExistingServerUsers#{
+                Username => #{
+                    <<"admin">> => false,
+                    <<"password">> => Password
                 }
             }
         }
