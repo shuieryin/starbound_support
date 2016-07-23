@@ -281,7 +281,7 @@ init(SbbConfigPath) ->
 %%--------------------------------------------------------------------
 -spec analyze_log(LineBin :: binary()) -> ok.
 analyze_log(LineBin) ->
-    case re:run(LineBin, <<"^\\[(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]\s+(\\S*):\\s+(\\S*):\\s+(.*)">>, [{capture, all_but_first, binary}]) of
+    case re:run(LineBin, <<"^\\[(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]\\s+\\[(\\S*)\\]\\s+(\\S*):\\s+(.*)">>, [{capture, all_but_first, binary}]) of
         {match, [Time, Type, Server, Content]} ->
             gen_server:cast({global, ?SERVER}, {analyze_log, #sb_message{
                 time = Time,
@@ -612,7 +612,7 @@ handle_logout(Content, #state{
     online_users = OnlineUsers,
     pending_restart_usernames = PendingRestartUsernames
 } = State) ->
-    case re:run(Content, <<"^Client\\s'(.*)'\\s<(\\d*)>\\s\\((\\S*\\))\\sdisconnected">>, [{capture, all_but_first, binary}]) of
+    case re:run(Content, <<"^Client\\s+'(.*)'\\s+<(\\d*)>\\s+\\((\\S*\\))\\sdisconnected">>, [{capture, all_but_first, binary}]) of
         {match, [PlayerName, _ServerLoginCount, _PlayerAddr]} ->
             LogoutUsername = maps:fold(
                 fun(Username, #player_info{player_name = CurPlayerName}, AccUsername) ->
@@ -650,7 +650,7 @@ handle_logout(Content, #state{
 %%--------------------------------------------------------------------
 -spec handle_restarted(Content :: binary(), #state{}) -> #state{}.
 handle_restarted(Content, State) ->
-    case re:run(Content, <<"^Starting\\sUniverseServer">>, []) of
+    case re:run(Content, <<"^Root:\\sWriting\\sruntime\\sconfiguration\\sto">>, []) of
         {match, _Match} ->
             error_logger:info_msg("Server restarted~n"),
             State#state{
