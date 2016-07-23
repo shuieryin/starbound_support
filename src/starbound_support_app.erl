@@ -20,7 +20,7 @@
 
 -record(state, {}).
 
--define(SBBCONFIG_PATH, "/root/steamcmd/starbound/linux64/sbboot.config"). % dummy "/Users/shuieryin/Workspaces/starbound_support/test/sbboot.config"
+-define(SBBCONFIG_PATH, "/root/steamcmd/starbound/storage/starbound_server.config").
 
 %% ===================================================================
 %% Application callbacks

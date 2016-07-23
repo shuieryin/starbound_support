@@ -242,8 +242,8 @@ init(SbbConfigPath) ->
     SbbootConfig = json:from_binary(RawSbbootConfig),
     io:format("started~n"),
 
-    ServerHomePath = "/root/steamcmd/starbound/giraffe_storage",
-    SbFolderPath = "/root/steamcmd/starbound/linux64",
+    ServerHomePath = "/root/steamcmd/starbound/storage",
+    SbFolderPath = "/root/steamcmd/starbound/linux",
     LogPath = filename:join([ServerHomePath, "starbound_server.log"]),
     UsersInfoPath = filename:join([ServerHomePath, "users_info"]),
 
