@@ -25,7 +25,8 @@
     online_users/0,
     restart_sb/0,
     safe_restart_sb/0,
-    pending_usernames/0
+    pending_usernames/0,
+    server_status/0
 ]).
 
 %% gen_server callbacks
@@ -213,6 +214,16 @@ safe_restart_sb() ->
 pending_usernames() ->
     gen_server:call({global, ?SERVER}, pending_usernames).
 
+%%--------------------------------------------------------------------
+%% @doc
+%% Get server status.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec server_status() -> ServerStatus :: map().
+server_status() ->
+    gen_server:call({global, ?SERVER}, server_status).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -313,17 +324,26 @@ analyze_log(LineBin) ->
     all_server_users |
     safe_restart_sb |
     pending_usernames |
+    server_status |
     all_users |
     online_users |
     {add_user, Username, Password} |
     {user, Username},
 
-    Reply :: add_user_status() | term() | Users | undefined | safe_restart_status() | {Password, IsPendingRestart} | [Username],
+    Reply :: add_user_status() |
+    term() |
+    Users |
+    undefined |
+    safe_restart_status() |
+    {Password, IsPendingRestart} |
+    [Username] |
+    ServerStatus,
 
     Key :: binary(),
     Username :: binary(),
     Password :: binary(),
     Users :: map(),
+    ServerStatus :: map(),
     IsPendingRestart :: boolean(),
 
     From :: {pid(), Tag :: term()}, % generic term
@@ -384,7 +404,13 @@ handle_call(safe_restart_sb, _From, #state{online_users = OnlineUsers} = State) 
             {reply, pending, State}
     end;
 handle_call(pending_usernames, _From, #state{pending_restart_usernames = PendingRestartUsernames} = State) ->
-    {reply, PendingRestartUsernames, State}.
+    {reply, PendingRestartUsernames, State};
+handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
+    MemoryUsage = re:replace(os:cmd("free -h"), "~n", "\n", [global, {return, binary}]),
+    {reply, #{
+        online_users => OnlineUsers,
+        memory_usage => MemoryUsage
+    }, State}.
 
 %%--------------------------------------------------------------------
 %% @private

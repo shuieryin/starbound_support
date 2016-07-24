@@ -64,7 +64,7 @@ init_per_suite(Config) ->
     error_logger:tty(false),
     {data_dir, RawDataDir} = lists:keyfind(data_dir, 1, Config),
     DataDir = filename:dirname(filename:dirname(RawDataDir)),
-    DummySbbConfigPath = filename:join([DataDir, "sbboot.config.json"]),
+    DummySbbConfigPath = filename:join([DataDir, "starbound_server.config"]),
     starbound_common_server:start(DummySbbConfigPath),
     Config.
 
