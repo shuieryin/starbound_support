@@ -406,7 +406,7 @@ handle_call(safe_restart_sb, _From, #state{online_users = OnlineUsers} = State) 
 handle_call(pending_usernames, _From, #state{pending_restart_usernames = PendingRestartUsernames} = State) ->
     {reply, PendingRestartUsernames, State};
 handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
-    MemoryUsage = re:replace(os:cmd("free -h"), "\n", "~n", [global, {return, binary}]),
+    MemoryUsage = re:replace(os:cmd("free -h"), "~n", "\n", [global, {return, binary}]),
     {reply, #{
         online_users => OnlineUsers,
         memory_usage => MemoryUsage
