@@ -460,8 +460,8 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
 handle_cast(stop, State) ->
     {stop, normal, State};
 handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
-    UpdatedState = handle_login(Content, State),
-    UpdatedState1 = handle_logout(Content, UpdatedState),
+    UpdatedState = handle_logout(Content, State),
+    UpdatedState1 = handle_login(Content, UpdatedState),
     UpdatedState2 = handle_restarted(Content, UpdatedState1),
     {noreply, UpdatedState2};
 handle_cast(restart_sb, State) ->
