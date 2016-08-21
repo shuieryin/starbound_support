@@ -702,7 +702,7 @@ handle_login(Content, #state{
                 last_login_time = Timestamp
             },
 
-            UpdatedAllUsers =
+            #{Username := UserInfo} = UpdatedAllUsers =
                 case maps:get(Username, AllUsers, undefined) of
                     undefined ->
                         AllUsers#{
@@ -739,7 +739,7 @@ handle_login(Content, #state{
                         error_logger:info_msg("User <~p> Player <~p> logged in.~n", [Username, PlayerName]),
                         StateWithAllUsers#state{
                             online_users = OnlineUsers#{
-                                Username => CurPlayerInfo
+                                Username => UserInfo
                             }
                         };
                     _DuplicatedLogin ->
