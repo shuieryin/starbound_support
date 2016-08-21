@@ -571,7 +571,6 @@ serverUsers(#state{
     Username :: binary(),
     Password :: binary().
 add_user(Username, Password, #state{
-    user_info_path = UsersInfoPath,
     all_users = AllUsers,
     sbboot_config_path = SbbConfigPath,
     sbboot_config = #{
@@ -602,11 +601,7 @@ add_user(Username, Password, #state{
     SbbConfigBin = json:to_binary(UpdatedSbbConfig),
     file:write_file(SbbConfigPath, SbbConfigBin),
 
-    spawn(
-        fun() ->
-            UpdatedAllUsersBin = io_lib:format("~tp.", [UpdatedAllUsers]),
-            file:write_file(UsersInfoPath, UpdatedAllUsersBin)
-        end),
+    write_users_info(UpdatedState),
 
     error_logger:info_msg("Added username:[~p], password:[~p]", [Username, Password]),
 
@@ -697,7 +692,6 @@ unban_user(Username, #state{
 %%--------------------------------------------------------------------
 -spec handle_login(Content :: binary(), #state{}) -> #state{}.
 handle_login(Content, #state{
-    user_info_path = UsersInfoPath,
     online_users = OnlineUsers,
     all_users = AllUsers
 } = State) ->
@@ -712,32 +706,16 @@ handle_login(Content, #state{
                 last_login_time = Timestamp
             },
 
-            #{Username := UserInfo} = UpdatedAllUsers =
-                case maps:get(Username, AllUsers, undefined) of
-                    undefined ->
-                        AllUsers#{
-                            Username => #user_info{
-                                username = Username,
-                                last_login_time = Timestamp,
-                                player_infos = #{PlayerName => CurPlayerInfo}
-                            }
-                        };
-                    #user_info{
-                        player_infos = PlayerInfos
-                    } = ExistingUser ->
-                        AllUsers#{
-                            Username := ExistingUser#user_info{
-                                last_login_time = Timestamp,
-                                player_infos = PlayerInfos#{PlayerName => CurPlayerInfo}
-                            }
-                        }
-                end,
+            #{Username := #user_info{
+                player_infos = PlayerInfos
+            } = ExistingUser} = AllUsers,
 
-            spawn(
-                fun() ->
-                    UpdatedAllUsersBin = io_lib:format("~tp.", [UpdatedAllUsers]),
-                    file:write_file(UsersInfoPath, UpdatedAllUsersBin)
-                end),
+            #{Username := UserInfo} = UpdatedAllUsers = AllUsers#{
+                Username := ExistingUser#user_info{
+                    last_login_time = Timestamp,
+                    player_infos = PlayerInfos#{PlayerName => CurPlayerInfo}
+                }
+            },
 
             StateWithAllUsers = State#state{
                 all_users = UpdatedAllUsers
@@ -758,6 +736,8 @@ handle_login(Content, #state{
                         ok = restart_sb_cmd(State),
                         ReturnState
                 end,
+
+            write_users_info(UpdatedState),
 
             UpdatedState;
         nomatch ->
@@ -844,6 +824,23 @@ user_pending_restart(Username, #state{
                 pending_restart_usernames = [Username | PendingRestartUsernames]
             }}
     end.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Write users info to local file
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec write_users_info(#state{}) -> pid().
+write_users_info(#state{
+    all_users = AllUsers,
+    user_info_path = UsersInfoPath
+}) ->
+    spawn(
+        fun() ->
+            UpdatedAllUsersBin = io_lib:format("~tp.", [AllUsers]),
+            file:write_file(UsersInfoPath, UpdatedAllUsersBin)
+        end).
 
 %%--------------------------------------------------------------------
 %% @doc
