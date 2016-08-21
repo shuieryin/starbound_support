@@ -770,7 +770,7 @@ handle_logout(Content, #state{
                         }
                     }, undefined) ->
                         Username;
-                    (Username, #user_info{}, AccUsername) ->
+                    (_Username, #user_info{}, AccUsername) ->
                         AccUsername
                 end, undefined, OnlineUsers),
 
