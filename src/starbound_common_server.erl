@@ -59,7 +59,7 @@
     username :: binary(),
     password :: binary(),
     last_login_time :: erlang:timestamp(),
-    player_infos :: #{PlayerName :: binary() => #player_info{}},
+    player_infos = #{} :: #{PlayerName :: binary() => #player_info{}},
     ban_reason :: ban_reason()
 }).
 
