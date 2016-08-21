@@ -436,7 +436,7 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
                 player_infos = PlayerInfosMap
             }, AccPlayerInfosMap) ->
                 maps:merge(AccPlayerInfosMap, PlayerInfosMap)
-            end, {}, OnlineUsers),
+            end, #{}, OnlineUsers),
         memory_usage => MemoryUsage
     }, State}.
 
