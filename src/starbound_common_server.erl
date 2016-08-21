@@ -769,18 +769,20 @@ handle_logout(Content, #state{
 
             UpdatedOnlineUsers = maps:remove(LogoutUsername, OnlineUsers),
 
+            UpdatedState = State#state{
+                online_users = UpdatedOnlineUsers
+            },
+
             ok = case maps:size(UpdatedOnlineUsers) == 0 andalso length(PendingRestartUsernames) > 0 of
                      true ->
-                         restart_sb_cmd(State);
+                         restart_sb_cmd(UpdatedState);
                      false ->
                          ok
                  end,
 
             error_logger:info_msg("Player <~p> logged out.~n", [PlayerName]),
 
-            State#state{
-                online_users = UpdatedOnlineUsers
-            };
+            UpdatedState;
         nomatch ->
             State
     end.
