@@ -758,13 +758,15 @@ handle_logout(Content, #state{
     case re:run(Content, <<"^Client\\s+'(.*)'\\s+<(\\d*)>\\s+\\((\\S*\\))\\sdisconnected">>, [{capture, all_but_first, binary}]) of
         {match, [PlayerName, _ServerLoginCount, _PlayerAddr]} ->
             LogoutUsername = maps:fold(
-                fun(Username, #player_info{player_name = CurPlayerName}, AccUsername) ->
-                    if
-                        PlayerName == CurPlayerName ->
-                            Username;
-                        true ->
-                            AccUsername
-                    end
+                fun
+                    (Username, #user_info{
+                        player_infos = #{
+                            PlayerName := #player_info{}
+                        }
+                    }, undefined) ->
+                        Username;
+                    (Username, #user_info{}, AccUsername) ->
+                        AccUsername
                 end, undefined, OnlineUsers),
 
             UpdatedOnlineUsers = maps:remove(LogoutUsername, OnlineUsers),
