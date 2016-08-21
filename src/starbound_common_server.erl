@@ -571,6 +571,7 @@ serverUsers(#state{
     Username :: binary(),
     Password :: binary().
 add_user(Username, Password, #state{
+    user_info_path = UsersInfoPath,
     all_users = AllUsers,
     sbboot_config_path = SbbConfigPath,
     sbboot_config = #{
@@ -586,18 +587,27 @@ add_user(Username, Password, #state{
         }
     },
 
+    UpdatedAllUsers = AllUsers#{
+        Username => #user_info{
+            username = Username,
+            password = Password
+        }
+    },
+
     UpdatedState = State#state{
-        all_users = AllUsers#{
-            Username => #user_info{
-                username = Username,
-                password = Password
-            }
-        },
+        all_users = UpdatedAllUsers,
         sbboot_config = UpdatedSbbConfig
     },
 
     SbbConfigBin = json:to_binary(UpdatedSbbConfig),
     file:write_file(SbbConfigPath, SbbConfigBin),
+
+    spawn(
+        fun() ->
+            UpdatedAllUsersBin = io_lib:format("~tp.", [UpdatedAllUsers]),
+            file:write_file(UsersInfoPath, UpdatedAllUsersBin)
+        end),
+
     error_logger:info_msg("Added username:[~p], password:[~p]", [Username, Password]),
 
     UpdatedState.
