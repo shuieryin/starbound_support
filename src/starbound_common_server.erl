@@ -20,6 +20,8 @@
     all_configs/0,
     all_server_users/0,
     add_user/2,
+    ban_user/2,
+    unban_user/1,
     user/1,
     all_users/0,
     online_users/0,
@@ -44,6 +46,7 @@
 
 -type add_user_status() :: ok | user_exist.
 -type safe_restart_status() :: done | pending.
+-type ban_reason() :: simultaneously_duplicated_login | undefined.
 
 -record(player_info, {
     player_name :: binary(),
@@ -52,11 +55,19 @@
     agree_restart = false :: boolean()
 }).
 
--record(user_info, {
+-record(user_info_old, {
     username :: binary(),
     last_login_time :: erlang:timestamp(),
     player_infos :: #{PlayerName :: binary() => #player_info{}},
     is_banned = false :: boolean()
+}).
+
+-record(user_info, {
+    username :: binary(),
+    password :: binary(),
+    last_login_time :: erlang:timestamp(),
+    player_infos :: #{PlayerName :: binary() => #player_info{}},
+    ban_reason :: ban_reason()
 }).
 
 -record(state, {
@@ -64,7 +75,7 @@
     sbfolder_path :: file:filename(),
     sbboot_config_path :: file:filename(),
     sbboot_config :: map(),
-    online_users = #{} :: #{Username :: binary() => #player_info{}},
+    online_users = #{} :: #{Username :: binary() => #user_info{}},
     all_users = #{} :: #{Username :: binary() => #user_info{}},
     pending_restart_usernames = [] :: [binary()]
 }).
@@ -146,11 +157,34 @@ all_server_users() ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec add_user(Username, Password) -> ok when
+-spec add_user(Username, Password) -> safe_restart_status() when
     Username :: binary(),
     Password :: binary().
 add_user(Username, Password) ->
     gen_server:call({global, ?SERVER}, {add_user, Username, Password}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Ban a user with reason.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec ban_user(Username, BanReason) -> ok when
+    Username :: binary(),
+    BanReason :: ban_reason().
+ban_user(Username, BanReason) ->
+    gen_server:call({global, ?SERVER}, {ban_user, BanReason, Username}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Unban user.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec unban_user(Username) -> ok when
+    Username :: binary().
+unban_user(Username) ->
+    gen_server:call({global, ?SERVER}, {unban_user, Username}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -267,6 +301,26 @@ init(SbbConfigPath) ->
                 #{}
         end,
 
+    ServerConfigUsers = maps:get(<<"serverUsers">>, SbbootConfig),
+    % one time code - start
+    UpdatedAllUsers = maps:fold(
+        fun(Username, #user_info_old{
+            last_login_time = LastLoginTime,
+            player_infos = PlayerInfosMap
+        }, AccUpdatedAllUseres) ->
+            #{<<"password">> := Password} = maps:get(Username, ServerConfigUsers),
+            AccUpdatedAllUseres#{
+                Username := #user_info{
+                    username = Username,
+                    password = Password,
+                    last_login_time = LastLoginTime,
+                    player_infos = PlayerInfosMap
+                }
+            }
+        end, #{}, AllUsers
+    ),
+    % one time code - end
+
     spawn(
         fun() ->
             elib:cmd("tail -fn0 " ++ LogPath, fun analyze_log/1)
@@ -277,12 +331,10 @@ init(SbbConfigPath) ->
         sbfolder_path = SbFolderPath,
         sbboot_config = SbbootConfig,
         sbboot_config_path = SbbConfigPath,
-        all_users = AllUsers
+        all_users = UpdatedAllUsers
     },
 
-    restart_sb_cmd(State),
-
-    {ok, State}.
+    {restart_sb_cmd(State), State}.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -328,14 +380,16 @@ analyze_log(LineBin) ->
     all_users |
     online_users |
     {add_user, Username, Password} |
+    {ban_user, Username, BanReason} |
+    {unban_user, Username} |
     {user, Username},
 
     Reply :: add_user_status() |
     term() |
     Users |
-    undefined |
+    undefined | ok |
     safe_restart_status() |
-    {Password, IsPendingRestart} |
+    {Password, IsPendingRestart, BanReason} |
     [Username] |
     ServerStatus,
 
@@ -345,6 +399,7 @@ analyze_log(LineBin) ->
     Users :: map(),
     ServerStatus :: map(),
     IsPendingRestart :: boolean(),
+    BanReason :: ban_reason(),
 
     From :: {pid(), Tag :: term()}, % generic term
     State :: #state{},
@@ -360,35 +415,30 @@ handle_call(all_configs, _From, #state{
     {reply, SbbConfig, State};
 handle_call(all_server_users, _From, State) ->
     {reply, serverUsers(State), State};
-handle_call({add_user, Username, Password}, _From, #state{online_users = OnlineUsers, pending_restart_usernames = PendingRestartUsernames} = State) ->
-    #state{
-        sbboot_config = SbbConfig,
-        sbboot_config_path = SbbConfigPath
-    } = UpdatedState = add_user(Username, Password, State),
+handle_call({add_user, Username, Password}, _From, State) ->
+    UpdatedState = add_user(Username, Password, State),
+    user_pending_restart(Username, UpdatedState);
+handle_call({ban_user, BanReason, Username}, _From, State) ->
+    UpdatedState = ban_user(Username, BanReason, State),
 
-    SbbConfigBin = json:to_binary(SbbConfig),
-    file:write_file(SbbConfigPath, SbbConfigBin),
+    ok = restart_sb_cmd(State),
 
-    error_logger:info_msg("Added username:[~p], password:[~p]", [Username, Password]),
-
-    case maps:size(OnlineUsers) of
-        0 ->
-            ok = restart_sb_cmd(State),
-            {reply, done, UpdatedState};
-        _Else ->
-            {reply, pending, UpdatedState#state{
-                pending_restart_usernames = [Username | PendingRestartUsernames]
-            }}
-    end;
+    {reply, ok, UpdatedState};
+handle_call({unban_user, Username}, _From, State) ->
+    UpdatedState = unban_user(Username, State),
+    user_pending_restart(Username, UpdatedState);
 handle_call({user, Username}, _From, #state{
+    all_users = AllUsers,
     pending_restart_usernames = PendingRestartUsernames
 } = State) ->
-    AllUsers = serverUsers(State),
     Result = case maps:get(Username, AllUsers, undefined) of
                  undefined ->
                      undefined;
-                 #{<<"password">> := Password} ->
-                     {Password, lists:member(Username, PendingRestartUsernames)}
+                 #user_info{
+                     password = Password,
+                     ban_reason = BanReason
+                 } ->
+                     {Password, lists:member(Username, PendingRestartUsernames), BanReason}
              end,
     {reply, Result, State};
 handle_call(all_users, _From, #state{all_users = AllUsers} = State) ->
@@ -408,7 +458,12 @@ handle_call(pending_usernames, _From, #state{pending_restart_usernames = Pending
 handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
     MemoryUsage = re:replace(os:cmd("free -h"), "~n", "\n", [global, {return, binary}]),
     {reply, #{
-        online_users => OnlineUsers,
+        online_users => maps:fold(
+            fun(_Username, #user_info{
+                player_infos = PlayerInfosMap
+            }, AccPlayerInfosMap) ->
+                maps:merge(AccPlayerInfosMap, PlayerInfosMap)
+            end, {}, OnlineUsers),
         memory_usage => MemoryUsage
     }, State}.
 
@@ -543,11 +598,19 @@ serverUsers(#state{
     Username :: binary(),
     Password :: binary().
 add_user(Username, Password, #state{
+    all_users = AllUsers,
+    sbboot_config_path = SbbConfigPath,
     sbboot_config = #{
         <<"serverUsers">> := ExistingServerUsers
     } = SbbConfig
 } = State) ->
-    State#state{
+    UpdatedState = State#state{
+        all_users = AllUsers#{
+            Username => #user_info{
+                username = Username,
+                password = Password
+            }
+        },
         sbboot_config = SbbConfig#{
             <<"serverUsers">> := ExistingServerUsers#{
                 Username => #{
@@ -556,7 +619,89 @@ add_user(Username, Password, #state{
                 }
             }
         }
-    }.
+    },
+
+    SbbConfigBin = json:to_binary(SbbConfig),
+    file:write_file(SbbConfigPath, SbbConfigBin),
+    error_logger:info_msg("Added username:[~p], password:[~p]", [Username, Password]),
+
+    UpdatedState.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Ban user
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec ban_user(Username, BanReason, #state{}) -> #state{} when
+    Username :: binary(),
+    BanReason :: ban_reason().
+ban_user(Username, BanReason, #state{
+    sbboot_config_path = SbbConfigPath,
+    all_users = AllUsers,
+    sbboot_config = #{
+        <<"serverUsers">> := ExistingServerUsers
+    } = SbbConfig
+} = State) ->
+    #{Username := UserInfo} = AllUsers,
+
+    UpdatedState = State#state{
+        all_users = AllUsers#{
+            Username := UserInfo#user_info{
+                ban_reason = BanReason
+            }
+        },
+        sbboot_config = SbbConfig#{<<"serverUsers">> := maps:remove(Username, ExistingServerUsers)}
+    },
+
+    SbbConfigBin = json:to_binary(SbbConfig),
+    file:write_file(SbbConfigPath, SbbConfigBin),
+    error_logger:info_msg("Banned username:[~p]", [Username]),
+
+    UpdatedState.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Ban user
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec unban_user(Username, #state{}) -> #state{} when
+    Username :: binary().
+unban_user(Username, #state{
+    sbboot_config_path = SbbConfigPath,
+    all_users = AllUsers,
+    sbboot_config = #{
+        <<"serverUsers">> := ExistingServerUsers
+    } = SbbConfig
+} = State) ->
+    #{
+        Username := #user_info{
+            password = Password
+        } = UserInfo
+    } = AllUsers,
+
+    UpdatedState = State#state{
+        all_users = AllUsers#{
+            Username => UserInfo#user_info{
+                ban_reason = undefined
+            }
+        },
+        sbboot_config = SbbConfig#{
+            <<"serverUsers">> := ExistingServerUsers#{
+                Username => #{
+                    <<"admin">> => false,
+                    <<"password">> => Password
+                }
+            }
+        }
+    },
+
+    SbbConfigBin = json:to_binary(SbbConfig),
+    file:write_file(SbbConfigPath, SbbConfigBin),
+    error_logger:info_msg("Unbanned username:[~p], password:[~p]", [Username, Password]),
+
+    UpdatedState.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -602,22 +747,31 @@ handle_login(Content, #state{
                         }
                 end,
 
-            UpdatedOnlineUsers = OnlineUsers#{
-                Username => CurPlayerInfo
-            },
-
             spawn(
                 fun() ->
                     UpdatedAllUsersBin = io_lib:format("~tp.", [UpdatedAllUsers]),
                     file:write_file(UsersInfoPath, UpdatedAllUsersBin)
                 end),
 
-            error_logger:info_msg("User <~p> Player <~p> logged in.~n", [Username, PlayerName]),
+            StateWithAllUsers = State#state{
+                all_users = UpdatedAllUsers
+            },
 
-            State#state{
-                all_users = UpdatedAllUsers,
-                online_users = UpdatedOnlineUsers
-            };
+            UpdatedState =
+                case maps:get(Username, OnlineUsers, undefined) of
+                    undefined ->
+                        error_logger:info_msg("User <~p> Player <~p> logged in.~n", [Username, PlayerName]),
+                        StateWithAllUsers#state{
+                            online_users = OnlineUsers#{
+                                Username => CurPlayerInfo
+                            }
+                        };
+                    _DuplicatedLogin ->
+                        error_logger:info_msg("Ban User <~p> due to duplicated login at same time.~nPlayer name: <~p>~n", [Username, PlayerName]),
+                        ban_user(Username, simultaneously_duplicated_login, StateWithAllUsers)
+                end,
+
+            UpdatedState;
         nomatch ->
             State
     end.
@@ -680,6 +834,27 @@ handle_restarted(Content, State) ->
             };
         nomatch ->
             State
+    end.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% User pending restart
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec user_pending_restart(Username :: binary(), #state{}) -> {reply, safe_restart_status(), #state{}}.
+user_pending_restart(Username, #state{
+    online_users = OnlineUsers,
+    pending_restart_usernames = PendingRestartUsernames
+} = State) ->
+    case maps:size(OnlineUsers) of
+        0 ->
+            ok = restart_sb_cmd(State),
+            {reply, done, State};
+        _Else ->
+            {reply, pending, State#state{
+                pending_restart_usernames = [Username | PendingRestartUsernames]
+            }}
     end.
 
 %%--------------------------------------------------------------------
