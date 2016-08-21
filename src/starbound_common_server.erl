@@ -55,13 +55,6 @@
     agree_restart = false :: boolean()
 }).
 
--record(user_info_old, {
-    username :: binary(),
-    last_login_time :: erlang:timestamp(),
-    player_infos :: #{PlayerName :: binary() => #player_info{}},
-    is_banned = false :: boolean()
-}).
-
 -record(user_info, {
     username :: binary(),
     password :: binary(),
@@ -301,26 +294,6 @@ init(SbbConfigPath) ->
                 #{}
         end,
 
-    ServerConfigUsers = maps:get(<<"serverUsers">>, SbbootConfig),
-    % one time code - start
-    UpdatedAllUsers = maps:fold(
-        fun(Username, #user_info_old{
-            last_login_time = LastLoginTime,
-            player_infos = PlayerInfosMap
-        }, AccUpdatedAllUseres) ->
-            #{<<"password">> := Password} = maps:get(Username, ServerConfigUsers),
-            AccUpdatedAllUseres#{
-                Username := #user_info{
-                    username = Username,
-                    password = Password,
-                    last_login_time = LastLoginTime,
-                    player_infos = PlayerInfosMap
-                }
-            }
-        end, #{}, AllUsers
-    ),
-    % one time code - end
-
     spawn(
         fun() ->
             elib:cmd("tail -fn0 " ++ LogPath, fun analyze_log/1)
@@ -331,7 +304,7 @@ init(SbbConfigPath) ->
         sbfolder_path = SbFolderPath,
         sbboot_config = SbbootConfig,
         sbboot_config_path = SbbConfigPath,
-        all_users = UpdatedAllUsers
+        all_users = AllUsers
     },
 
     {restart_sb_cmd(State), State}.
