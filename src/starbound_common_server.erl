@@ -577,6 +577,15 @@ add_user(Username, Password, #state{
         <<"serverUsers">> := ExistingServerUsers
     } = SbbConfig
 } = State) ->
+    UpdatedSbbConfig = SbbConfig#{
+        <<"serverUsers">> := ExistingServerUsers#{
+            Username => #{
+                <<"admin">> => false,
+                <<"password">> => Password
+            }
+        }
+    },
+
     UpdatedState = State#state{
         all_users = AllUsers#{
             Username => #user_info{
@@ -584,17 +593,10 @@ add_user(Username, Password, #state{
                 password = Password
             }
         },
-        sbboot_config = SbbConfig#{
-            <<"serverUsers">> := ExistingServerUsers#{
-                Username => #{
-                    <<"admin">> => false,
-                    <<"password">> => Password
-                }
-            }
-        }
+        sbboot_config = UpdatedSbbConfig
     },
 
-    SbbConfigBin = json:to_binary(SbbConfig),
+    SbbConfigBin = json:to_binary(UpdatedSbbConfig),
     file:write_file(SbbConfigPath, SbbConfigBin),
     error_logger:info_msg("Added username:[~p], password:[~p]", [Username, Password]),
 
@@ -617,6 +619,7 @@ ban_user(Username, BanReason, #state{
     } = SbbConfig
 } = State) ->
     #{Username := UserInfo} = AllUsers,
+    UpdatedSbbConfig = SbbConfig#{<<"serverUsers">> := maps:remove(Username, ExistingServerUsers)},
 
     UpdatedState = State#state{
         all_users = AllUsers#{
@@ -624,10 +627,10 @@ ban_user(Username, BanReason, #state{
                 ban_reason = BanReason
             }
         },
-        sbboot_config = SbbConfig#{<<"serverUsers">> := maps:remove(Username, ExistingServerUsers)}
+        sbboot_config = UpdatedSbbConfig
     },
 
-    SbbConfigBin = json:to_binary(SbbConfig),
+    SbbConfigBin = json:to_binary(UpdatedSbbConfig),
     file:write_file(SbbConfigPath, SbbConfigBin),
     error_logger:info_msg("Banned username:[~p]", [Username]),
 
