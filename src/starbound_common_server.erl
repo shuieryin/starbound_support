@@ -70,7 +70,8 @@
     sbboot_config :: map(),
     online_users = #{} :: #{Username :: binary() => #user_info{}},
     all_users = #{} :: #{Username :: binary() => #user_info{}},
-    pending_restart_usernames = [] :: [binary()]
+    pending_restart_usernames = [] :: [binary()],
+    analyze_pid :: pid()
 }).
 
 -record(sb_message, {
@@ -294,7 +295,7 @@ init(SbbConfigPath) ->
                 #{}
         end,
 
-    spawn(
+    AnalyzePid = spawn(
         fun() ->
             elib:cmd("tail -fn0 " ++ LogPath, fun analyze_log/1)
         end),
@@ -304,7 +305,8 @@ init(SbbConfigPath) ->
         sbfolder_path = SbFolderPath,
         sbboot_config = SbbootConfig,
         sbboot_config_path = SbbConfigPath,
-        all_users = AllUsers
+        all_users = AllUsers,
+        analyze_pid = AnalyzePid
     },
 
     {restart_sb_cmd(State), State}.
@@ -504,7 +506,10 @@ handle_info(_Info, State) ->
 -spec terminate(Reason, State) -> ok when
     Reason :: (normal | shutdown | {shutdown, term()} | term()), % generic term
     State :: #state{}.
-terminate(_Reason, _State) ->
+terminate(_Reason, #state{
+    analyze_pid = AnalyzePid
+}) ->
+    exit(AnalyzePid, normal),
     ok.
 
 %%--------------------------------------------------------------------
