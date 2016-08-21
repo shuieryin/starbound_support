@@ -744,7 +744,9 @@ handle_login(Content, #state{
                         };
                     _DuplicatedLogin ->
                         error_logger:info_msg("Ban User <~p> due to duplicated login at same time.~nPlayer name: <~p>~n", [Username, PlayerName]),
-                        ban_user(Username, simultaneously_duplicated_login, StateWithAllUsers)
+                        ReturnState = ban_user(Username, simultaneously_duplicated_login, StateWithAllUsers),
+                        ok = restart_sb_cmd(State),
+                        ReturnState
                 end,
 
             UpdatedState;
