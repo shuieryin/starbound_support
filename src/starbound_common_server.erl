@@ -762,12 +762,12 @@ handle_login(Content, #state{
                                 Username => UserInfo
                             }
                         },
-                        write_users_info(UpdatedState),
+                        write_users_info(ReturnState),
                         ReturnState;
                     _DuplicatedLogin ->
                         error_logger:info_msg("Ban User <~p> due to duplicated login at same time.~nPlayer name: <~p>~n", [Username, PlayerName]),
                         ReturnState = ban_user(Username, simultaneously_duplicated_login, StateWithAllUsers),
-                        ok = restart_sb_cmd(State),
+                        ok = restart_sb_cmd(ReturnState),
                         ReturnState
                 end,
 
