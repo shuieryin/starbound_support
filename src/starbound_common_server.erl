@@ -43,6 +43,7 @@
 ]).
 
 -define(SERVER, ?MODULE).
+-define(ANALYZE_PROCESS_NAME, read_sb_log).
 
 -type add_user_status() :: ok | user_exist.
 -type safe_restart_status() :: done | pending.
@@ -295,10 +296,18 @@ init(SbbConfigPath) ->
                 #{}
         end,
 
-    AnalyzePid = spawn(
-        fun() ->
-            elib:cmd("tail -fn0 " ++ LogPath, fun analyze_log/1)
-        end),
+    AnalyzePid =
+        case whereis(?ANALYZE_PROCESS_NAME) of
+            undefined ->
+                RawPid = spawn(
+                    fun() ->
+                        elib:cmd("tail -fn0 " ++ LogPath, fun analyze_log/1)
+                    end),
+                register(?ANALYZE_PROCESS_NAME, RawPid),
+                RawPid;
+            ExistingPid ->
+                ExistingPid
+        end,
 
     State = #state{
         user_info_path = UsersInfoPath,
@@ -577,34 +586,26 @@ serverUsers(#state{
     Password :: binary().
 add_user(Username, Password, #state{
     all_users = AllUsers,
-    sbboot_config_path = SbbConfigPath,
     sbboot_config = #{
         <<"serverUsers">> := ExistingServerUsers
     } = SbbConfig
 } = State) ->
-    UpdatedSbbConfig = SbbConfig#{
-        <<"serverUsers">> := ExistingServerUsers#{
-            Username => #{
-                <<"admin">> => false,
-                <<"password">> => Password
+    UpdatedState = State#state{
+        all_users = AllUsers#{
+            Username => #user_info{
+                username = Username,
+                password = Password
+            }
+        },
+        sbboot_config = SbbConfig#{
+            <<"serverUsers">> := ExistingServerUsers#{
+                Username => #{
+                    <<"admin">> => false,
+                    <<"password">> => Password
+                }
             }
         }
     },
-
-    UpdatedAllUsers = AllUsers#{
-        Username => #user_info{
-            username = Username,
-            password = Password
-        }
-    },
-
-    UpdatedState = State#state{
-        all_users = UpdatedAllUsers,
-        sbboot_config = UpdatedSbbConfig
-    },
-
-    SbbConfigBin = json:to_binary(UpdatedSbbConfig),
-    file:write_file(SbbConfigPath, SbbConfigBin),
 
     write_users_info(UpdatedState),
 
@@ -622,7 +623,6 @@ add_user(Username, Password, #state{
     Username :: binary(),
     BanReason :: ban_reason().
 ban_user(Username, BanReason, #state{
-    sbboot_config_path = SbbConfigPath,
     all_users = AllUsers,
     sbboot_config = #{
         <<"serverUsers">> := ExistingServerUsers
@@ -640,8 +640,8 @@ ban_user(Username, BanReason, #state{
         sbboot_config = UpdatedSbbConfig
     },
 
-    SbbConfigBin = json:to_binary(UpdatedSbbConfig),
-    file:write_file(SbbConfigPath, SbbConfigBin),
+    write_users_info(UpdatedState),
+
     error_logger:info_msg("Banned username:[~p]", [Username]),
 
     UpdatedState.
@@ -655,7 +655,6 @@ ban_user(Username, BanReason, #state{
 -spec unban_user(Username, #state{}) -> #state{} when
     Username :: binary().
 unban_user(Username, #state{
-    sbboot_config_path = SbbConfigPath,
     all_users = AllUsers,
     sbboot_config = #{
         <<"serverUsers">> := ExistingServerUsers
@@ -683,8 +682,7 @@ unban_user(Username, #state{
         }
     },
 
-    SbbConfigBin = json:to_binary(SbbConfig),
-    file:write_file(SbbConfigPath, SbbConfigBin),
+    write_users_info(UpdatedState),
     error_logger:info_msg("Unbanned username:[~p], password:[~p]", [Username, Password]),
 
     UpdatedState.
@@ -843,12 +841,17 @@ user_pending_restart(Username, #state{
 -spec write_users_info(#state{}) -> pid().
 write_users_info(#state{
     all_users = AllUsers,
-    user_info_path = UsersInfoPath
+    user_info_path = UsersInfoPath,
+    sbboot_config = SbbConfig,
+    sbboot_config_path = SbbConfigPath
 }) ->
     spawn(
         fun() ->
             UpdatedAllUsersBin = io_lib:format("~tp.", [AllUsers]),
-            file:write_file(UsersInfoPath, UpdatedAllUsersBin)
+            file:write_file(UsersInfoPath, UpdatedAllUsersBin),
+
+            SbbConfigBin = json:to_binary(SbbConfig),
+            file:write_file(SbbConfigPath, SbbConfigBin)
         end).
 
 %%--------------------------------------------------------------------
