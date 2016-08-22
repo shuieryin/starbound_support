@@ -440,8 +440,8 @@ handle_call(safe_restart_sb, _From, #state{online_users = OnlineUsers} = State) 
 handle_call(pending_usernames, _From, #state{pending_restart_usernames = PendingRestartUsernames} = State) ->
     {reply, PendingRestartUsernames, State};
 handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
-    RawMemoryUsages = re:split(os:cmd("free -h"), "~n", [{return, binary}]),
-    MemoryUsage = parse_memory_usage(RawMemoryUsages, []),
+    RawMemoryUsages = re:split(os:cmd("free -h"), "\n", [{return, binary}]),
+    MemoryUsage = parse_memory_usage(RawMemoryUsages, {}),
     {reply, #{
         online_users => maps:fold(
             fun(_Username, #user_info{
@@ -461,24 +461,46 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
 %%--------------------------------------------------------------------
 -spec parse_memory_usage(SrcMemoryUsages, AccMemoryUsages) -> FinalMemoryUsages when
     SrcMemoryUsages :: [binary()],
+    Headers :: [binary()],
     AccMemoryUsageBin :: binary(),
-    AccMemoryUsages :: [AccMemoryUsageBin],
+    AccMemoryUsages :: {[AccMemoryUsageBin], Headers} | {},
     FinalMemoryUsages :: binary().
-parse_memory_usage([RawHeaders | RestMemoryUsages], []) ->
-    [_UselessHead | AccMemoryUsages] = re:split(RawHeaders, <<"\\s+">>, [{return, binary}]),
-    parse_memory_usage(RestMemoryUsages, AccMemoryUsages);
-parse_memory_usage([MemoryUsageLine | RestMemoryUsages], AccMemoryUsages) ->
+parse_memory_usage([RawHeaders | RestMemoryUsages], {}) ->
+    [_UselessHead | Headers] = re:split(RawHeaders, <<"\\s+">>, [{return, binary}]),
+    parse_memory_usage(RestMemoryUsages, {[], Headers});
+parse_memory_usage([MemoryUsageLine | RestMemoryUsages], {AccMemoryUsageBins, Headers}) ->
     [Label | Values] = re:split(MemoryUsageLine, <<"\\s+">>, [{return, binary}]),
 
-    {UpdatedAccMemoryUsages, RestSrcMemoryUsages} = lists:foldl(
-        fun(Value, {AccUpdatedAccMemoryUsages, [MeomoryUsage | RestSrcMemoryUsages]}) ->
-            {[<<MeomoryUsage/binary, " ", Label/binary, Value/binary, "~n">> | AccUpdatedAccMemoryUsages], RestSrcMemoryUsages}
-        end, {[], AccMemoryUsages}, Values
+    {UpdatedAccMemoryUsages, ParsedMeomoryUsages, _Headers} = lists:foldl(
+        fun
+            (Value, {AccUpdatedAccMemoryUsages, AccParsedMemoryUsages, [Header | RestHeaders]}) ->
+                NewValue =
+                    case Value == <<>> of
+                        true ->
+                            <<>>;
+                        false ->
+                            <<Header/binary, " ", Label/binary, " ", Value/binary, "\n">>
+                    end,
+
+                {ParsedMemoryUsage, RestPasredMemoryUsages} =
+                    case AccParsedMemoryUsages of
+                        [] ->
+                            {<<>>, []};
+                        [RawParsedMeomoryUsage | RawRestParsedMemoryUsages] ->
+                            {RawParsedMeomoryUsage, RawRestParsedMemoryUsages}
+                    end,
+
+                {
+                    [<<ParsedMemoryUsage/binary, NewValue/binary>> | AccUpdatedAccMemoryUsages],
+                    RestPasredMemoryUsages,
+                    RestHeaders
+                }
+        end, {[], AccMemoryUsageBins, Headers}, Values
     ),
 
-    parse_memory_usage(RestMemoryUsages, lists:reverse(UpdatedAccMemoryUsages) ++ RestSrcMemoryUsages);
-parse_memory_usage([], AccMemoryUsages) ->
-    iolist_to_binary(AccMemoryUsages).
+    parse_memory_usage(RestMemoryUsages, {lists:reverse(UpdatedAccMemoryUsages) ++ ParsedMeomoryUsages, Headers});
+parse_memory_usage([], {FinalMemoryUsages, _Headers}) ->
+    iolist_to_binary(FinalMemoryUsages).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -513,8 +535,8 @@ handle_cast(restart_sb, State) ->
 %% @doc
 %% Handling all non call/cast messages
 %%
-%% @spec handle_info(Info, State) -> {noreply, State} |¢
-%%                                   {noreply, State, Timeout} |
+%% @spec handle_info(Info, State) -> {noreply, State} |
+%% %%                                   {noreply, State, Timeout} |
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
