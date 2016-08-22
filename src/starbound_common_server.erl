@@ -470,7 +470,7 @@ parse_memory_usage([RawHeaders | RestMemoryUsages], []) ->
 parse_memory_usage([MemoryUsageLine | RestMemoryUsages], AccMemoryUsages) ->
     [Label | Values] = re:split(MemoryUsageLine, <<"\\s+">>, [{return, binary}]),
 
-    UpdatedAccMemoryUsages = lists:foldl(
+    {UpdatedAccMemoryUsages, _RestSrcMemoryUsages} = lists:foldl(
         fun(Value, {AccUpdatedAccMemoryUsages, [MeomoryUsage | RestSrcMemoryUsages]}) ->
             {[<<MeomoryUsage/binary, " ", Label/binary, Value/binary, "~n">> | AccUpdatedAccMemoryUsages], RestSrcMemoryUsages}
         end, {[], AccMemoryUsages}, Values
