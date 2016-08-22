@@ -440,7 +440,7 @@ handle_call(safe_restart_sb, _From, #state{online_users = OnlineUsers} = State) 
 handle_call(pending_usernames, _From, #state{pending_restart_usernames = PendingRestartUsernames} = State) ->
     {reply, PendingRestartUsernames, State};
 handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
-    RawMemoryUsages = re:replace(os:cmd("free -h"), "~n", "\n", [global, {return, binary}]),
+    RawMemoryUsages = re:split(os:cmd("free -h"), "~n", [{return, binary}]),
     MemoryUsage = parse_memory_usage(RawMemoryUsages, []),
     {reply, #{
         online_users => maps:fold(
