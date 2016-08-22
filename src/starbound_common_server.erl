@@ -440,7 +440,8 @@ handle_call(safe_restart_sb, _From, #state{online_users = OnlineUsers} = State) 
 handle_call(pending_usernames, _From, #state{pending_restart_usernames = PendingRestartUsernames} = State) ->
     {reply, PendingRestartUsernames, State};
 handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
-    MemoryUsage = re:replace(os:cmd("free -h"), "~n", "\n", [global, {return, binary}]),
+    RawMemoryUsages = re:replace(os:cmd("free -h"), "~n", "\n", [global, {return, binary}]),
+    MemoryUsage = parse_memory_usage(RawMemoryUsages, []),
     {reply, #{
         online_users => maps:fold(
             fun(_Username, #user_info{
@@ -450,6 +451,34 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
             end, #{}, OnlineUsers),
         memory_usage => MemoryUsage
     }, State}.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Parse memory usage from "free -h" to readable text on phone.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec parse_memory_usage(SrcMemoryUsages, AccMemoryUsages) -> FinalMemoryUsages when
+    SrcMemoryUsages :: [binary()],
+    AccMemoryUsageBin :: binary(),
+    AccMemoryUsages :: [AccMemoryUsageBin],
+    FinalMemoryUsages :: binary().
+parse_memory_usage([RawHeaders | RestMemoryUsages], []) ->
+    [_UselessHead | AccMemoryUsages] = re:split(RawHeaders, <<"\\s+">>, [{return, binary}]),
+    parse_memory_usage(RestMemoryUsages, AccMemoryUsages);
+parse_memory_usage([MemoryUsageLine | RestMemoryUsages], AccMemoryUsages) ->
+    [Label | Values] = re:split(MemoryUsageLine, <<"\\s+">>, [{return, binary}]),
+
+    UpdatedAccMemoryUsages = lists:foldl(
+        fun(Value, {AccUpdatedAccMemoryUsages, [MeomoryUsage | RestSrcMemoryUsages]}) ->
+            {[<<MeomoryUsage/binary, " ", Label/binary, Value/binary, "~n">> | AccUpdatedAccMemoryUsages], RestSrcMemoryUsages}
+        end, {[], AccMemoryUsages}, Values
+    ),
+
+    parse_memory_usage(RestMemoryUsages, lists:reverse(UpdatedAccMemoryUsages));
+parse_memory_usage([], AccMemoryUsages) ->
+    iolist_to_binary(AccMemoryUsages).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -728,19 +757,19 @@ handle_login(Content, #state{
                 case maps:get(Username, OnlineUsers, undefined) of
                     undefined ->
                         error_logger:info_msg("User <~p> Player <~p> logged in.~n", [Username, PlayerName]),
-                        StateWithAllUsers#state{
+                        ReturnState = StateWithAllUsers#state{
                             online_users = OnlineUsers#{
                                 Username => UserInfo
                             }
-                        };
+                        },
+                        write_users_info(UpdatedState),
+                        ReturnState;
                     _DuplicatedLogin ->
                         error_logger:info_msg("Ban User <~p> due to duplicated login at same time.~nPlayer name: <~p>~n", [Username, PlayerName]),
                         ReturnState = ban_user(Username, simultaneously_duplicated_login, StateWithAllUsers),
                         ok = restart_sb_cmd(State),
                         ReturnState
                 end,
-
-            write_users_info(UpdatedState),
 
             UpdatedState;
         nomatch ->
