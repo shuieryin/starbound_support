@@ -470,13 +470,13 @@ parse_memory_usage([RawHeaders | RestMemoryUsages], []) ->
 parse_memory_usage([MemoryUsageLine | RestMemoryUsages], AccMemoryUsages) ->
     [Label | Values] = re:split(MemoryUsageLine, <<"\\s+">>, [{return, binary}]),
 
-    {UpdatedAccMemoryUsages, _RestSrcMemoryUsages} = lists:foldl(
+    {UpdatedAccMemoryUsages, RestSrcMemoryUsages} = lists:foldl(
         fun(Value, {AccUpdatedAccMemoryUsages, [MeomoryUsage | RestSrcMemoryUsages]}) ->
             {[<<MeomoryUsage/binary, " ", Label/binary, Value/binary, "~n">> | AccUpdatedAccMemoryUsages], RestSrcMemoryUsages}
         end, {[], AccMemoryUsages}, Values
     ),
 
-    parse_memory_usage(RestMemoryUsages, lists:reverse(UpdatedAccMemoryUsages));
+    parse_memory_usage(RestMemoryUsages, lists:reverse(UpdatedAccMemoryUsages) ++ RestSrcMemoryUsages);
 parse_memory_usage([], AccMemoryUsages) ->
     iolist_to_binary(AccMemoryUsages).
 
