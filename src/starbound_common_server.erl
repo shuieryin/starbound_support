@@ -59,7 +59,7 @@
 -record(user_info, {
     username :: binary(),
     password :: binary(),
-    last_login_time :: erlang:timestamp(),
+    last_login_time :: erlang:timestamp() | undefined,
     player_infos = #{} :: #{PlayerName :: binary() => #player_info{}},
     ban_reason :: ban_reason()
 }).
@@ -443,6 +443,12 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
     RawMemoryUsages = re:split(os:cmd("free -h"), "\n", [{return, binary}]),
     MemoryUsage = parse_memory_usage(RawMemoryUsages, {}),
     {reply, #{
+        is_sb_server_up => case re:run(re:replace(os:cmd("pgrep -f '\\./starbound_server'"), "\n", "", [{return, binary}]), <<"^[0-9]+$">>) of
+                            nomatch ->
+                                false;
+                            _Else ->
+                                true
+                        end,
         online_users => maps:fold(
             fun(_Username, #user_info{
                 player_infos = PlayerInfosMap
