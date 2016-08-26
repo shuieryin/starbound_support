@@ -444,11 +444,11 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
     MemoryUsage = parse_memory_usage(RawMemoryUsages, {}),
     {reply, #{
         is_sb_server_up => case re:run(re:replace(os:cmd("pgrep -f '\\./starbound_server'"), "\n", "", [{return, binary}]), <<"^[0-9]+$">>) of
-                            nomatch ->
-                                false;
-                            _Else ->
-                                true
-                        end,
+                               nomatch ->
+                                   false;
+                               _Else ->
+                                   true
+                           end,
         online_users => maps:fold(
             fun(_Username, #user_info{
                 player_infos = PlayerInfosMap
@@ -531,7 +531,8 @@ handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
     UpdatedState = handle_logout(Content, State),
     UpdatedState1 = handle_login(Content, UpdatedState),
     UpdatedState2 = handle_restarted(Content, UpdatedState1),
-    {noreply, UpdatedState2};
+    UpdatedState3 = handle_errors(Content, UpdatedState2),
+    {noreply, UpdatedState3};
 handle_cast(restart_sb, State) ->
     ok = restart_sb_cmd(State),
     {noreply, State}.
@@ -572,10 +573,7 @@ handle_info(_Info, State) ->
 -spec terminate(Reason, State) -> ok when
     Reason :: (normal | shutdown | {shutdown, term()} | term()), % generic term
     State :: #state{}.
-terminate(_Reason, #state{
-    analyze_pid = AnalyzePid
-}) ->
-    exit(AnalyzePid, normal),
+terminate(_Reason, _State) ->
     ok.
 
 %%--------------------------------------------------------------------
@@ -867,6 +865,23 @@ handle_restarted(Content, State) ->
         nomatch ->
             State
     end.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Handle errors
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec handle_restarted(Content :: binary(), #state{}) -> #state{}.
+handle_errors(Content, State) ->
+    case re:run(Content, <<"^Segfault\\sEncountered!">>, []) of
+        {match, _Match} ->
+            error_logger:info_msg("Restart server due to ~p~n", [Content]),
+            ok = restart_sb_cmd(State);
+        nomatch ->
+            do_nothing
+    end,
+    State.
 
 %%--------------------------------------------------------------------
 %% @doc
