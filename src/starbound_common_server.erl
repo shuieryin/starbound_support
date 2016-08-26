@@ -872,7 +872,7 @@ handle_restarted(Content, State) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec handle_restarted(Content :: binary(), #state{}) -> #state{}.
+-spec handle_errors(Content :: binary(), #state{}) -> #state{}.
 handle_errors(Content, State) ->
     case re:run(Content, <<"^Segfault\\sEncountered!">>, []) of
         {match, _Match} ->
