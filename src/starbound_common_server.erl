@@ -45,10 +45,6 @@
 -define(SERVER, ?MODULE).
 -define(ANALYZE_PROCESS_NAME, read_sb_log).
 
--type add_user_status() :: ok | user_exist.
--type safe_restart_status() :: done | pending.
--type ban_reason() :: simultaneously_duplicated_login | undefined.
-
 -record(player_info, {
     player_name :: binary(),
     ip_addr :: inet:ip4_address(),
@@ -81,6 +77,15 @@
     server :: binary(),
     content :: binary()
 }).
+
+-type add_user_status() :: ok | user_exist.
+-type safe_restart_status() :: done | pending.
+-type ban_reason() :: simultaneously_duplicated_login | undefined.
+-type server_status() :: #{
+is_sb_server_up => boolean(),
+online_users => #{Username :: binary() => #player_info{}},
+memory_usage => binary()
+}.
 
 %%%===================================================================
 %%% API
@@ -249,7 +254,7 @@ pending_usernames() ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec server_status() -> ServerStatus :: map().
+-spec server_status() -> ServerStatus :: server_status().
 server_status() ->
     gen_server:call({global, ?SERVER}, server_status).
 
@@ -396,7 +401,7 @@ analyze_log(LineBin) ->
     Username :: binary(),
     Password :: binary(),
     Users :: map(),
-    ServerStatus :: map(),
+    ServerStatus :: server_status(),
     IsPendingRestart :: boolean(),
     BanReason :: ban_reason(),
 
@@ -553,7 +558,7 @@ handle_cast(restart_sb, State) ->
 %% Handling all non call/cast messages
 %%
 %% @spec handle_info(Info, State) -> {noreply, State} |
-%% %%                                   {noreply, State, Timeout} |
+%%                                   {noreply, State, Timeout} |
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
