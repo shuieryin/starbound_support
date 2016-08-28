@@ -328,14 +328,12 @@ init(SbbConfigPath) ->
         analyze_pid = AnalyzePid
     },
 
-    case IsSbServerUp of
-        true ->
-            ok;
-        false ->
-            restart_sb_cmd(State)
-    end,
-
-    {ok, State}.
+    {case IsSbServerUp of
+         true ->
+             ok;
+         false ->
+             restart_sb_cmd(State)
+     end, State}.
 
 %%--------------------------------------------------------------------
 %% @doc
