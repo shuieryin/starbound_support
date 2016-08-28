@@ -296,6 +296,15 @@ init(SbbConfigPath) ->
                 #{}
         end,
 
+    IsSbServerUp = is_sb_server_up(),
+    OnlineUsers =
+        case IsSbServerUp of
+            false ->
+                #{};
+            true ->
+                elib:for_each_line_in_file(LogPath, fun analyze_log/1)
+        end,
+
     AnalyzePid =
         case whereis(?ANALYZE_PROCESS_NAME) of
             undefined ->
@@ -315,10 +324,18 @@ init(SbbConfigPath) ->
         sbboot_config = SbbootConfig,
         sbboot_config_path = SbbConfigPath,
         all_users = AllUsers,
+        online_users = OnlineUsers,
         analyze_pid = AnalyzePid
     },
 
-    {restart_sb_cmd(State), State}.
+    case IsSbServerUp of
+        true ->
+            ok;
+        false ->
+            restart_sb_cmd(State)
+    end,
+
+    {ok, State}.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -443,12 +460,7 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
     RawMemoryUsages = re:split(os:cmd("free -h"), "\n", [{return, binary}]),
     MemoryUsage = parse_memory_usage(RawMemoryUsages, {}),
     {reply, #{
-        is_sb_server_up => case re:run(re:replace(os:cmd("pgrep -f '\\./starbound_server'"), "\n", "", [{return, binary}]), <<"^[0-9]+$">>) of
-                               nomatch ->
-                                   false;
-                               _Else ->
-                                   true
-                           end,
+        is_sb_server_up => is_sb_server_up(),
         online_users => maps:fold(
             fun(_Username, #user_info{
                 player_infos = PlayerInfosMap
@@ -925,6 +937,21 @@ write_users_info(#state{
             SbbConfigBin = json:to_binary(SbbConfig),
             file:write_file(SbbConfigPath, SbbConfigBin)
         end).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Check if SB server is up
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec is_sb_server_up() -> boolean().
+is_sb_server_up() ->
+    case re:run(re:replace(os:cmd("pgrep -f '\\./starbound_server'"), "\n", "", [{return, binary}]), <<"^[0-9]+$">>) of
+        nomatch ->
+            false;
+        _Else ->
+            true
+    end.
 
 %%--------------------------------------------------------------------
 %% @doc
