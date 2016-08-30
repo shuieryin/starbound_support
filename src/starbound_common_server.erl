@@ -800,7 +800,11 @@ handle_login(Content, #state{
                         error_logger:info_msg("User <~p> Player <~p> logged in.~n", [Username, PlayerName]),
                         ReturnState = StateWithAllUsers#state{
                             online_users = OnlineUsers#{
-                                Username => UserInfo
+                                Username => UserInfo#user_info{
+                                    player_infos = #{
+                                        PlayerName => CurPlayerInfo
+                                    }
+                                }
                             }
                         },
                         write_users_info(ReturnState),
