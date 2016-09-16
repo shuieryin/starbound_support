@@ -812,7 +812,7 @@ handle_login(Content, #state{
                 end,
 
             #{Username := UserInfo} = UpdatedAllUsers = AllUsers#{
-                Username := ExistingUser#user_info{
+                Username => ExistingUser#user_info{
                     last_login_time = Timestamp,
                     player_infos = PlayerInfos#{PlayerName => CurPlayerInfo}
                 }
