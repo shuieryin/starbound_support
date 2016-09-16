@@ -782,11 +782,9 @@ handle_login(Content, #state{
                 last_login_time = Timestamp
             },
 
-            #{Username := #user_info{
+            #user_info{
                 player_infos = PlayerInfos
-            } = ExistingUser} = AllUsers,
-
-            ExistingUser =
+            } = ExistingUser =
                 case maps:get(Username, AllUsers, undefined) of
                     undefined ->
                         #{Username := #{
@@ -794,9 +792,7 @@ handle_login(Content, #state{
                         }} = ExistingServerUsers,
                         RawExistingUser = #user_info{
                             username = Username,
-                            password = Password,
-                            player_infos = PlayerInfos,
-                            last_login_time = Timestamp
+                            password = Password
                         },
 
                         AddMissingUserState = State#state{
