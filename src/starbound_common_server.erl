@@ -792,12 +792,21 @@ handle_login(Content, #state{
                         #{Username := #{
                             <<"password">> := Password
                         }} = ExistingServerUsers,
-                        #user_info{
+                        RawExistingUser = #user_info{
                             username = Username,
                             password = Password,
                             player_infos = PlayerInfos,
                             last_login_time = Timestamp
-                        };
+                        },
+
+                        AddMissingUserState = State#state{
+                            all_users = AllUsers#{
+                                Username => RawExistingUser
+                            }
+                        },
+
+                        write_users_info(AddMissingUserState),
+                        RawExistingUser;
                     Found ->
                         Found
                 end,
