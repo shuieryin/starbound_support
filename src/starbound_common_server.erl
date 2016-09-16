@@ -766,7 +766,10 @@ unban_user(Username, #state{
 -spec handle_login(Content :: binary(), #state{}) -> #state{}.
 handle_login(Content, #state{
     online_users = OnlineUsers,
-    all_users = AllUsers
+    all_users = AllUsers,
+    sbboot_config = #{
+        <<"serverUsers">> := ExistingServerUsers
+    }
 } = State) ->
     case re:run(Content, <<"^Logged\\sin\\saccount\\s''(\\S*)''\\sas\\splayer\\s'(.*)'\\sfrom\\saddress\\s(0000:0000:0000:0000:0000:ffff:\\S{4}:\\S{4})">>, [{capture, all_but_first, binary}]) of
         {match, [Username, PlayerName, PlayerAddr]} ->
@@ -782,6 +785,22 @@ handle_login(Content, #state{
             #{Username := #user_info{
                 player_infos = PlayerInfos
             } = ExistingUser} = AllUsers,
+
+            ExistingUser =
+                case maps:get(Username, AllUsers, undefined) of
+                    undefined ->
+                        #{Username := #{
+                            <<"password">> := Password
+                        }} = ExistingServerUsers,
+                        #user_info{
+                            username = Username,
+                            password = Password,
+                            player_infos = PlayerInfos,
+                            last_login_time = Timestamp
+                        };
+                    Found ->
+                        Found
+                end,
 
             #{Username := UserInfo} = UpdatedAllUsers = AllUsers#{
                 Username := ExistingUser#user_info{
