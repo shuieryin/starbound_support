@@ -85,7 +85,8 @@
 -type server_status() :: #{
 is_sb_server_up => boolean(),
 online_users => #{Username :: binary() => #player_info{}},
-memory_usage => binary()
+memory_usage => binary(),
+temperature => binary()
 }.
 
 %%%===================================================================
