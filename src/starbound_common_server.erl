@@ -44,6 +44,7 @@
 
 -define(SERVER, ?MODULE).
 -define(ANALYZE_PROCESS_NAME, read_sb_log).
+-define(TEMPERATURE_FILEPATH, "/root/starbound_support/temperature").
 
 -record(player_info, {
     player_name :: binary(),
@@ -460,6 +461,7 @@ handle_call(safe_restart_sb, _From, #state{online_users = OnlineUsers} = State) 
 handle_call(pending_usernames, _From, #state{pending_restart_usernames = PendingRestartUsernames} = State) ->
     {reply, PendingRestartUsernames, State};
 handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
+    %% Collect memory usage - START
     RawMemoryUsages = re:split(os:cmd("free"), "\n", [{return, binary}]),
     {MemoryUsage, #{
         <<"total_Mem">> := TotalMem,
@@ -467,6 +469,12 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
     } = ValuesMap} = parse_memory_usage(RawMemoryUsages, {}, #{}),
     error_logger:info_msg("Raw memroy usage:~p~nMap:~p~n", [MemoryUsage, ValuesMap]),
     MemoryUsageBin = float_to_binary(UsedMem / TotalMem * 100, [{decimals, 2}]),
+    %% Collect memory usage - END
+
+    %% Collect temperature - START
+    {ok, TempBin} = file:read_file(?TEMPERATURE_FILEPATH),
+    %% Collect temperature - END
+
     {reply, #{
         is_sb_server_up => is_sb_server_up(),
         online_users => maps:fold(
@@ -475,7 +483,8 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
             }, AccPlayerInfosMap) ->
                 maps:merge(AccPlayerInfosMap, PlayerInfosMap)
             end, #{}, OnlineUsers),
-        memory_usage => <<MemoryUsageBin/binary, "%">>
+        memory_usage => <<MemoryUsageBin/binary, "%">>,
+        temperature => TempBin
     }, State}.
 
 %%--------------------------------------------------------------------
