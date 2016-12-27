@@ -495,18 +495,17 @@ parse_memory_usage([RawHeaders | RestMemoryUsages], {}, AccValuesMap) ->
 parse_memory_usage([MemoryUsageLine | RestMemoryUsages], {AccMemoryUsageBins, Headers}, AccValuesMap) ->
     [Label | Values] = re:split(MemoryUsageLine, <<"\\s+">>, [{return, binary}]),
 
-    {UpdatedAccMemoryUsages, ParsedMeomoryUsages, _Headers} = lists:foldl(
+    {UpdatedAccMemoryUsages, ParsedMeomoryUsages, _Headers, UpdatedAccValuesMap} = lists:foldl(
         fun
-            (Value, {AccUpdatedAccMemoryUsages, AccParsedMemoryUsages, [Header | RestHeaders]}) ->
-                NewValue =
+            (Value, {AccUpdatedAccMemoryUsages, AccParsedMemoryUsages, [Header | RestHeaders], InnerAccValuesMap}) ->
+                {NewValue, UpdatedInnerAccValuesMap} =
                     case Value == <<>> of
                         true ->
                             <<>>;
                         false ->
                             LabelWithoutColon = <<<<X>> || <<X:8>> <= Label, <<X:8>> =/= <<$:>>>>,
                             FinalLabel = <<Header/binary, "_", LabelWithoutColon/binary>>,
-                            <<FinalLabel/binary, ": ", Value/binary, "\n">>,
-                            AccValuesMap#{FinalLabel => Value}
+                            {<<FinalLabel/binary, ": ", Value/binary, "\n">>, InnerAccValuesMap#{FinalLabel => Value}}
                     end,
 
                 {ParsedMemoryUsage, RestPasredMemoryUsages} =
@@ -520,12 +519,13 @@ parse_memory_usage([MemoryUsageLine | RestMemoryUsages], {AccMemoryUsageBins, He
                 {
                     [<<ParsedMemoryUsage/binary, NewValue/binary>> | AccUpdatedAccMemoryUsages],
                     RestPasredMemoryUsages,
-                    RestHeaders
+                    RestHeaders,
+                    UpdatedInnerAccValuesMap
                 }
-        end, {[], AccMemoryUsageBins, Headers}, Values
+        end, {[], AccMemoryUsageBins, Headers, AccValuesMap}, Values
     ),
 
-    parse_memory_usage(RestMemoryUsages, {lists:reverse(UpdatedAccMemoryUsages) ++ ParsedMeomoryUsages, Headers}, AccValuesMap);
+    parse_memory_usage(RestMemoryUsages, {lists:reverse(UpdatedAccMemoryUsages) ++ ParsedMeomoryUsages, Headers}, UpdatedAccValuesMap);
 parse_memory_usage([], {FinalMemoryUsages, _Headers}, FinalValuesMap) ->
     {iolist_to_binary(FinalMemoryUsages), FinalValuesMap}.
 
