@@ -460,8 +460,9 @@ handle_call(safe_restart_sb, _From, #state{online_users = OnlineUsers} = State) 
 handle_call(pending_usernames, _From, #state{pending_restart_usernames = PendingRestartUsernames} = State) ->
     {reply, PendingRestartUsernames, State};
 handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
-    RawMemoryUsages = re:split(os:cmd("free -h"), "\n", [{return, binary}]),
-    MemoryUsage = parse_memory_usage(RawMemoryUsages, {}),
+    RawMemoryUsages = re:split(os:cmd("free"), "\n", [{return, binary}]),
+    {MemoryUsage, ValuesMap} = parse_memory_usage(RawMemoryUsages, {}, #{}),
+    error_logger:info_msg("ValuesMap:~p~n", [ValuesMap]),
     {reply, #{
         is_sb_server_up => is_sb_server_up(),
         online_users => maps:fold(
@@ -476,20 +477,22 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
-%% Parse memory usage from "free -h" to readable text on phone.
+%% Parse memory usage from "free" to readable text on phone.
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec parse_memory_usage(SrcMemoryUsages, AccMemoryUsages) -> FinalMemoryUsages when
+-spec parse_memory_usage(SrcMemoryUsages, AccMemoryUsages, AccValuesMap) -> {FinalMemoryUsages, FinalValuesMap} when
     SrcMemoryUsages :: [binary()],
     Headers :: [binary()],
     AccMemoryUsageBin :: binary(),
     AccMemoryUsages :: {[AccMemoryUsageBin], Headers} | {},
-    FinalMemoryUsages :: binary().
-parse_memory_usage([RawHeaders | RestMemoryUsages], {}) ->
+    FinalMemoryUsages :: binary(),
+    AccValuesMap :: map(),
+    FinalValuesMap :: AccValuesMap.
+parse_memory_usage([RawHeaders | RestMemoryUsages], {}, AccValuesMap) ->
     [_UselessHead | Headers] = re:split(RawHeaders, <<"\\s+">>, [{return, binary}]),
-    parse_memory_usage(RestMemoryUsages, {[], Headers});
-parse_memory_usage([MemoryUsageLine | RestMemoryUsages], {AccMemoryUsageBins, Headers}) ->
+    parse_memory_usage(RestMemoryUsages, {[], Headers}, AccValuesMap);
+parse_memory_usage([MemoryUsageLine | RestMemoryUsages], {AccMemoryUsageBins, Headers}, AccValuesMap) ->
     [Label | Values] = re:split(MemoryUsageLine, <<"\\s+">>, [{return, binary}]),
 
     {UpdatedAccMemoryUsages, ParsedMeomoryUsages, _Headers} = lists:foldl(
@@ -500,7 +503,10 @@ parse_memory_usage([MemoryUsageLine | RestMemoryUsages], {AccMemoryUsageBins, He
                         true ->
                             <<>>;
                         false ->
-                            <<Header/binary, " ", Label/binary, " ", Value/binary, "\n">>
+                            LabelWithoutColon = <<<<X>> || <<X:8>> <= Label, <<X:8>> =/= <<$:>>>>,
+                            FinalLabel = <<Header/binary, "_", LabelWithoutColon/binary>>,
+                            <<FinalLabel/binary, ": ", Value/binary, "\n">>,
+                            AccValuesMap#{FinalLabel => Value}
                     end,
 
                 {ParsedMemoryUsage, RestPasredMemoryUsages} =
@@ -519,9 +525,9 @@ parse_memory_usage([MemoryUsageLine | RestMemoryUsages], {AccMemoryUsageBins, He
         end, {[], AccMemoryUsageBins, Headers}, Values
     ),
 
-    parse_memory_usage(RestMemoryUsages, {lists:reverse(UpdatedAccMemoryUsages) ++ ParsedMeomoryUsages, Headers});
-parse_memory_usage([], {FinalMemoryUsages, _Headers}) ->
-    iolist_to_binary(FinalMemoryUsages).
+    parse_memory_usage(RestMemoryUsages, {lists:reverse(UpdatedAccMemoryUsages) ++ ParsedMeomoryUsages, Headers}, AccValuesMap);
+parse_memory_usage([], {FinalMemoryUsages, _Headers}, FinalValuesMap) ->
+    {iolist_to_binary(FinalMemoryUsages), FinalValuesMap}.
 
 %%--------------------------------------------------------------------
 %% @private
