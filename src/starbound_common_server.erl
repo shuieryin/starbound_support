@@ -45,6 +45,7 @@
 -define(SERVER, ?MODULE).
 -define(ANALYZE_PROCESS_NAME, read_sb_log).
 -define(TEMPERATURE_FILEPATH, "/root/starbound_support/temperature").
+-define(CPU_USAGE_FILEPATH, "/root/starbound_support/cpuusage").
 
 -record(player_info, {
     player_name :: binary(),
@@ -86,7 +87,8 @@
 is_sb_server_up => boolean(),
 online_users => #{Username :: binary() => #player_info{}},
 memory_usage => binary(),
-temperature => binary()
+temperature => binary(),
+cpu_usage => binary()
 }.
 
 %%%===================================================================
@@ -473,8 +475,12 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
     %% Collect memory usage - END
 
     %% Collect temperature - START
-    {ok, TempBin} = file:read_file(?TEMPERATURE_FILEPATH),
+    {ok, TemperatureBin} = file:read_file(?TEMPERATURE_FILEPATH),
     %% Collect temperature - END
+
+    %% Collect cpu usage - START
+    {ok, CpuUsageBin} = file:read_file(?CPU_USAGE_FILEPATH),
+    %% Collect cpu usage - END
 
     {reply, #{
         is_sb_server_up => is_sb_server_up(),
@@ -485,7 +491,8 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
                 maps:merge(AccPlayerInfosMap, PlayerInfosMap)
             end, #{}, OnlineUsers),
         memory_usage => <<MemoryUsageBin/binary, "%">>,
-        temperature => TempBin
+        temperature => TemperatureBin,
+        cpu_usage => <<CpuUsageBin/binary, "%">>
     }, State}.
 
 %%--------------------------------------------------------------------
