@@ -461,8 +461,12 @@ handle_call(pending_usernames, _From, #state{pending_restart_usernames = Pending
     {reply, PendingRestartUsernames, State};
 handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
     RawMemoryUsages = re:split(os:cmd("free"), "\n", [{return, binary}]),
-    {MemoryUsage, ValuesMap} = parse_memory_usage(RawMemoryUsages, {}, #{}),
-    error_logger:info_msg("ValuesMap:~p~n", [ValuesMap]),
+    {MemoryUsage, #{
+        <<"total_Mem">> := TotalMem,
+        <<"used_Mem">> := UsedMem
+    } = ValuesMap} = parse_memory_usage(RawMemoryUsages, {}, #{}),
+    error_logger:info_msg("Raw memroy usage:~p~nMap:~p~n", [MemoryUsage, ValuesMap]),
+    MemoryUsageBin = float_to_binary(UsedMem / TotalMem * 100, [{decimals, 2}]),
     {reply, #{
         is_sb_server_up => is_sb_server_up(),
         online_users => maps:fold(
@@ -471,7 +475,7 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
             }, AccPlayerInfosMap) ->
                 maps:merge(AccPlayerInfosMap, PlayerInfosMap)
             end, #{}, OnlineUsers),
-        memory_usage => MemoryUsage
+        memory_usage => <<MemoryUsageBin/binary, "%">>
     }, State}.
 
 %%--------------------------------------------------------------------
@@ -505,7 +509,7 @@ parse_memory_usage([MemoryUsageLine | RestMemoryUsages], {AccMemoryUsageBins, He
                         false ->
                             LabelWithoutColon = <<<<X>> || <<X:8>> <= Label, <<X:8>> =/= <<$:>>>>,
                             FinalLabel = <<Header/binary, "_", LabelWithoutColon/binary>>,
-                            {<<FinalLabel/binary, ": ", Value/binary, "\n">>, InnerAccValuesMap#{FinalLabel => Value}}
+                            {<<FinalLabel/binary, ": ", Value/binary, "\n">>, InnerAccValuesMap#{FinalLabel => list_to_integer(binary_to_list(Value))}}
                     end,
 
                 {ParsedMemoryUsage, RestPasredMemoryUsages} =
