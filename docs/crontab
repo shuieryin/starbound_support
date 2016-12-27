@@ -1,2 +1,2 @@
   0  6  *  *  *            /home/shuieryin/sb/sb_docker_backup.sh; /home/shuieryin/wm/wechat_mud_backup.sh
- */1 *  *  *  *            sensors | grep -oP "Core 0:\s+\K(\S*)" > temperature; docker cp temperature starbound:/root/starbound_support; rm temperature; top -bn2 | grep '%Cpu' | tail -1 | grep -oP  '\K(....|...) us,' | grep -oP '^(\S+)' > cpuusage; docker cp cpuusage starbound:/root/cpuusage; rm cpuusage
+ */1 *  *  *  *            sensors | grep -oP "Core 0:\s+\K(\S*)" > temperature; docker cp temperature starbound:/root/starbound_support; rm temperature; top -bn2 | grep '%Cpu' | tail -1 | grep -oP  '\K(....|...) us,' | grep -oP '^(\S+)' > cpuusage; docker cp cpuusage starbound:/root/starbound_support; rm cpuusage
