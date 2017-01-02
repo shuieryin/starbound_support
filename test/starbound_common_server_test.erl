@@ -19,7 +19,8 @@
 -include_lib("starbound_support_test.hrl").
 
 -record(state, {
-    all_server_users :: map()
+    all_server_users :: map(),
+    test_times :: pos_integer()
 }).
 
 %%%===================================================================
@@ -28,7 +29,8 @@
 
 test(_Config) ->
     ModelState = #state{
-        all_server_users = starbound_common_server:all_server_users()
+        all_server_users = starbound_common_server:all_server_users(),
+        test_times = 600
     },
 
     RandomFuncs = [
@@ -38,10 +40,13 @@ test(_Config) ->
         fun add_user/1
     ],
 
-    ?assert(proper:quickcheck(?FORALL(_L, integer(), run_test(RandomFuncs, ModelState)), 600)).
+    run_test(RandomFuncs, ModelState).
 
-run_test(RandomFuncs, ModelState) ->
-    apply(?ONE_OF(RandomFuncs), [ModelState]),
+run_test(RandomFuncs, #state{test_times = TestTimes} = ModelState) ->
+    lists:foreach(
+        fun(_Index) ->
+            apply(?ONE_OF(RandomFuncs), [ModelState])
+        end, lists:seq(1, TestTimes)),
     true.
 
 %%%===================================================================
