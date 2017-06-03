@@ -475,11 +475,23 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
     %% Collect memory usage - END
 
     %% Collect temperature - START
-    {ok, TemperatureBin} = file:read_file(?TEMPERATURE_FILEPATH),
+    TemperatureBin =
+        case file:read_file(?TEMPERATURE_FILEPATH) of
+            {ok, RetTemperatureBin} ->
+                RetTemperatureBin;
+            {error, _ReasonTemp} ->
+                <<>>
+        end,
     %% Collect temperature - END
 
     %% Collect cpu usage - START
-    {ok, CpuUsageBin} = file:read_file(?CPU_USAGE_FILEPATH),
+    CpuUsageBin =
+        case file:read_file(?CPU_USAGE_FILEPATH) of
+            {ok, RetCpuUsageBin} ->
+                RetCpuUsageBin;
+            {error, _ReasonCpu} ->
+                <<>>
+        end,
     %% Collect cpu usage - END
 
     {reply, #{
