@@ -82,7 +82,7 @@
 
 -type add_user_status() :: ok | user_exist.
 -type safe_restart_status() :: done | pending.
--type ban_reason() :: simultaneously_duplicated_login | undefined.
+-type ban_reason() :: simultaneously_duplicated_login | login_always_cause_server_down | undefined.
 -type server_status() :: #{
 is_sb_server_up => boolean(),
 online_users => #{Username :: binary() => #player_info{}},
