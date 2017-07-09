@@ -73,12 +73,12 @@
     analyze_pid :: pid()
 }).
 
--record(sb_message, {
-    time :: binary(),
-    type :: 'Info' | 'Warning' | 'Error' | 'Debug',
-    server :: binary(),
-    content :: binary()
-}).
+%%-record(sb_message, {
+%%    time :: binary(),
+%%    type :: 'Info' | 'Warning' | 'Error' | 'Debug',
+%%    server :: binary(),
+%%    content :: binary()
+%%}).
 
 -type add_user_status() :: ok | user_exist.
 -type safe_restart_status() :: done | pending.
@@ -165,7 +165,11 @@ all_server_users() ->
     Username :: binary(),
     Password :: binary().
 add_user(Username, Password) ->
-    gen_server:call({global, ?SERVER}, {add_user, Username, Password}).
+    State = gen_server:call({global, ?SERVER}, server_state),
+    UpdatedState = add_user(Username, Password, State),
+    {Status, FinalState} = user_pending_restart(Username, UpdatedState),
+    ok = gen_server:cast({global, ?SERVER}, {update_state, FinalState}),
+    Status.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -177,7 +181,10 @@ add_user(Username, Password) ->
     Username :: binary(),
     BanReason :: ban_reason().
 ban_user(Username, BanReason) ->
-    gen_server:call({global, ?SERVER}, {ban_user, BanReason, Username}).
+    State = gen_server:call({global, ?SERVER}, server_state),
+    UpdatedState = ban_user(Username, BanReason, State),
+    ok = gen_server:cast({global, ?SERVER}, {update_state, UpdatedState}),
+    restart_sb_cmd(State).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -185,10 +192,14 @@ ban_user(Username, BanReason) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec unban_user(Username) -> ok when
+-spec unban_user(Username) -> safe_restart_status() when
     Username :: binary().
 unban_user(Username) ->
-    gen_server:call({global, ?SERVER}, {unban_user, Username}).
+    State = gen_server:call({global, ?SERVER}, server_state),
+    UpdatedState = unban_user(Username, State),
+    {Status, FinalState} = user_pending_restart(Username, UpdatedState),
+    ok = gen_server:cast({global, ?SERVER}, {update_state, FinalState}),
+    Status.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -196,11 +207,25 @@ unban_user(Username) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec user(Username) -> Password when
+-spec user(Username) -> undefined | {Password, IsPendingRestart, BanReason} when
     Username :: binary(),
-    Password :: binary().
+    Password :: binary(),
+    IsPendingRestart :: boolean(),
+    BanReason :: binary().
 user(Username) ->
-    gen_server:call({global, ?SERVER}, {user, Username}).
+    #state{
+        all_users = AllUsers,
+        pending_restart_usernames = PendingRestartUsernames
+    } = gen_server:call({global, ?SERVER}, server_state),
+    case maps:get(Username, AllUsers, undefined) of
+        undefined ->
+            undefined;
+        #user_info{
+            password = Password,
+            ban_reason = BanReason
+        } ->
+            {Password, lists:member(Username, PendingRestartUsernames), BanReason}
+    end.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -230,7 +255,12 @@ online_users() ->
 %%--------------------------------------------------------------------
 -spec restart_sb() -> ok.
 restart_sb() ->
-    gen_server:cast({global, ?SERVER}, restart_sb).
+    spawn(
+        fun() ->
+            State = gen_server:call({global, ?SERVER}, server_state),
+            ok = restart_sb_cmd(State)
+        end),
+    ok.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -240,7 +270,14 @@ restart_sb() ->
 %%--------------------------------------------------------------------
 -spec safe_restart_sb() -> safe_restart_status().
 safe_restart_sb() ->
-    gen_server:call({global, ?SERVER}, safe_restart_sb).
+    #state{online_users = OnlineUsers} = State = gen_server:call({global, ?SERVER}, server_state),
+    case maps:size(OnlineUsers) of
+        0 ->
+            ok = restart_sb_cmd(State),
+            done;
+        _Else ->
+            pending
+    end.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -260,7 +297,49 @@ pending_usernames() ->
 %%--------------------------------------------------------------------
 -spec server_status() -> ServerStatus :: server_status().
 server_status() ->
-    gen_server:call({global, ?SERVER}, server_status).
+    #state{online_users = OnlineUsers} = gen_server:call({global, ?SERVER}, server_state),
+    %% Collect memory usage - START
+    RawMemoryUsages = re:split(os:cmd("free"), "\n", [{return, binary}]),
+    {MemoryUsage, #{
+        <<"total_Mem">> := TotalMem,
+        <<"used_Mem">> := UsedMem
+    } = ValuesMap} = parse_memory_usage(RawMemoryUsages, {}, #{}),
+    error_logger:info_msg("Raw memroy usage:~p~nMap:~p~n", [MemoryUsage, ValuesMap]),
+    MemoryUsageBin = float_to_binary(UsedMem / TotalMem * 100, [{decimals, 2}]),
+    %% Collect memory usage - END
+
+    %% Collect temperature - START
+    TemperatureBin =
+        case file:read_file(?TEMPERATURE_FILEPATH) of
+            {ok, RetTemperatureBin} ->
+                RetTemperatureBin;
+            {error, _ReasonTemp} ->
+                <<>>
+        end,
+    %% Collect temperature - END
+
+    %% Collect cpu usage - START
+    CpuUsageBin =
+        case file:read_file(?CPU_USAGE_FILEPATH) of
+            {ok, RetCpuUsageBin} ->
+                RetCpuUsageBin;
+            {error, _ReasonCpu} ->
+                <<>>
+        end,
+    %% Collect cpu usage - END
+
+    #{
+        is_sb_server_up => is_sb_server_up(),
+        online_users => maps:fold(
+            fun(_Username, #user_info{
+                player_infos = PlayerInfosMap
+            }, AccPlayerInfosMap) ->
+                maps:merge(AccPlayerInfosMap, PlayerInfosMap)
+            end, #{}, OnlineUsers),
+        memory_usage => <<MemoryUsageBin/binary, "%">>,
+        temperature => TemperatureBin,
+        cpu_usage => <<CpuUsageBin/binary, "%">>
+    }.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -353,13 +432,18 @@ init(SbbConfigPath) ->
 -spec analyze_log(LineBin :: binary()) -> ok.
 analyze_log(LineBin) ->
     case re:run(LineBin, <<"^\\[(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]\\s+\\[(\\S*)\\]\\s+(\\S*):\\s+(.*)">>, [{capture, all_but_first, binary}]) of
-        {match, [Time, Type, Server, Content]} ->
-            gen_server:cast({global, ?SERVER}, {analyze_log, #sb_message{
-                time = Time,
-                type = binary_to_atom(Type, utf8),
-                server = Server,
-                content = Content
-            }});
+        {match, [_Time, _Type, _Server, Content]} ->
+            spawn(
+                fun() ->
+                    State = gen_server:call({global, ?SERVER}, server_state),
+                    UpdatedState = handle_logout(Content, State),
+                    UpdatedState1 = handle_login(Content, UpdatedState),
+                    UpdatedState2 = handle_restarted(Content, UpdatedState1),
+                    UpdatedState3 = handle_errors(Content, UpdatedState2),
+                    ok = gen_server:cast({global, ?SERVER}, {update_state, UpdatedState3})
+                end
+            ),
+            ok;
         _NoMatch ->
             ok
     end.
@@ -382,32 +466,17 @@ analyze_log(LineBin) ->
     Request :: {get, Key} |
     all_configs |
     all_server_users |
-    safe_restart_sb |
     pending_usernames |
-    server_status |
     all_users |
     online_users |
-    {add_user, Username, Password} |
-    {ban_user, Username, BanReason} |
-    {unban_user, Username} |
-    {user, Username},
+    server_state,
 
-    Reply :: add_user_status() |
-    term() |
-    Users |
-    undefined | ok |
-    safe_restart_status() |
-    {Password, IsPendingRestart, BanReason} |
-    [Username] |
-    ServerStatus,
+    Reply ::
+    add_user_status() |
+    Users,
 
     Key :: binary(),
-    Username :: binary(),
-    Password :: binary(),
     Users :: map(),
-    ServerStatus :: server_status(),
-    IsPendingRestart :: boolean(),
-    BanReason :: ban_reason(),
 
     From :: {pid(), Tag :: term()}, % generic term
     State :: #state{},
@@ -423,89 +492,14 @@ handle_call(all_configs, _From, #state{
     {reply, SbbConfig, State};
 handle_call(all_server_users, _From, State) ->
     {reply, serverUsers(State), State};
-handle_call({add_user, Username, Password}, _From, State) ->
-    UpdatedState = add_user(Username, Password, State),
-    user_pending_restart(Username, UpdatedState);
-handle_call({ban_user, BanReason, Username}, _From, State) ->
-    UpdatedState = ban_user(Username, BanReason, State),
-
-    ok = restart_sb_cmd(State),
-
-    {reply, ok, UpdatedState};
-handle_call({unban_user, Username}, _From, State) ->
-    UpdatedState = unban_user(Username, State),
-    user_pending_restart(Username, UpdatedState);
-handle_call({user, Username}, _From, #state{
-    all_users = AllUsers,
-    pending_restart_usernames = PendingRestartUsernames
-} = State) ->
-    Result = case maps:get(Username, AllUsers, undefined) of
-                 undefined ->
-                     undefined;
-                 #user_info{
-                     password = Password,
-                     ban_reason = BanReason
-                 } ->
-                     {Password, lists:member(Username, PendingRestartUsernames), BanReason}
-             end,
-    {reply, Result, State};
 handle_call(all_users, _From, #state{all_users = AllUsers} = State) ->
     {reply, AllUsers, State};
 handle_call(online_users, _From, #state{online_users = OnlineUsers} = State) ->
     {reply, OnlineUsers, State};
-handle_call(safe_restart_sb, _From, #state{online_users = OnlineUsers} = State) ->
-    case maps:size(OnlineUsers) of
-        0 ->
-            ok = restart_sb_cmd(State),
-            {reply, done, State};
-        _Else ->
-            {reply, pending, State}
-    end;
 handle_call(pending_usernames, _From, #state{pending_restart_usernames = PendingRestartUsernames} = State) ->
     {reply, PendingRestartUsernames, State};
-handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
-    %% Collect memory usage - START
-    RawMemoryUsages = re:split(os:cmd("free"), "\n", [{return, binary}]),
-    {MemoryUsage, #{
-        <<"total_Mem">> := TotalMem,
-        <<"used_Mem">> := UsedMem
-    } = ValuesMap} = parse_memory_usage(RawMemoryUsages, {}, #{}),
-    error_logger:info_msg("Raw memroy usage:~p~nMap:~p~n", [MemoryUsage, ValuesMap]),
-    MemoryUsageBin = float_to_binary(UsedMem / TotalMem * 100, [{decimals, 2}]),
-    %% Collect memory usage - END
-
-    %% Collect temperature - START
-    TemperatureBin =
-        case file:read_file(?TEMPERATURE_FILEPATH) of
-            {ok, RetTemperatureBin} ->
-                RetTemperatureBin;
-            {error, _ReasonTemp} ->
-                <<>>
-        end,
-    %% Collect temperature - END
-
-    %% Collect cpu usage - START
-    CpuUsageBin =
-        case file:read_file(?CPU_USAGE_FILEPATH) of
-            {ok, RetCpuUsageBin} ->
-                RetCpuUsageBin;
-            {error, _ReasonCpu} ->
-                <<>>
-        end,
-    %% Collect cpu usage - END
-
-    {reply, #{
-        is_sb_server_up => is_sb_server_up(),
-        online_users => maps:fold(
-            fun(_Username, #user_info{
-                player_infos = PlayerInfosMap
-            }, AccPlayerInfosMap) ->
-                maps:merge(AccPlayerInfosMap, PlayerInfosMap)
-            end, #{}, OnlineUsers),
-        memory_usage => <<MemoryUsageBin/binary, "%">>,
-        temperature => TemperatureBin,
-        cpu_usage => <<CpuUsageBin/binary, "%">>
-    }, State}.
+handle_call(server_state, _From, State) ->
+    {reply, State, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -574,22 +568,14 @@ parse_memory_usage([], {FinalMemoryUsages, _Headers}, FinalValuesMap) ->
     {noreply, NewState, timeout() | hibernate} |
     {stop, Reason, NewState} when
 
-    Request :: {analyze_log, #sb_message{}} | restart_sb | stop, % generic term
+    Request ::
+    {update_state, State},
 
     State :: #state{},
     NewState :: State,
     Reason :: term(). % generic term
-handle_cast(stop, State) ->
-    {stop, normal, State};
-handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
-    UpdatedState = handle_logout(Content, State),
-    UpdatedState1 = handle_login(Content, UpdatedState),
-    UpdatedState2 = handle_restarted(Content, UpdatedState1),
-    UpdatedState3 = handle_errors(Content, UpdatedState2),
-    {noreply, UpdatedState3};
-handle_cast(restart_sb, State) ->
-    ok = restart_sb_cmd(State),
-    {noreply, State}.
+handle_cast({update_state, NewState}, _OldState) ->
+    {noreply, NewState}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -971,7 +957,7 @@ handle_errors(Content, State) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec user_pending_restart(Username :: binary(), #state{}) -> {reply, safe_restart_status(), #state{}}.
+-spec user_pending_restart(Username :: binary(), #state{}) -> {safe_restart_status(), #state{}}.
 user_pending_restart(Username, #state{
     online_users = OnlineUsers,
     pending_restart_usernames = PendingRestartUsernames
@@ -979,9 +965,9 @@ user_pending_restart(Username, #state{
     case maps:size(OnlineUsers) of
         0 ->
             ok = restart_sb_cmd(State),
-            {reply, done, State};
+            {done, State};
         _Else ->
-            {reply, pending, State#state{
+            {pending, State#state{
                 pending_restart_usernames = [Username | PendingRestartUsernames]
             }}
     end.
