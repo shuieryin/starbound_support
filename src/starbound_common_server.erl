@@ -419,7 +419,7 @@ analyze_log(LineBin) ->
 
     Reply ::
     add_user_status() |
-    Users |
+    Users,
     Username :: binary(),
     Password :: binary(),
 
