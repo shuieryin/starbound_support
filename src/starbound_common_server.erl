@@ -165,11 +165,7 @@ all_server_users() ->
     Username :: binary(),
     Password :: binary().
 add_user(Username, Password) ->
-    State = gen_server:call({global, ?SERVER}, server_state),
-    UpdatedState = add_user(Username, Password, State),
-    {Status, FinalState} = user_pending_restart(Username, UpdatedState),
-    ok = gen_server:cast({global, ?SERVER}, {update_state, FinalState}),
-    Status.
+    gen_server:call({global, ?SERVER}, {add_user, Username, Password}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -213,19 +209,7 @@ unban_user(Username) ->
     IsPendingRestart :: boolean(),
     BanReason :: binary().
 user(Username) ->
-    #state{
-        all_users = AllUsers,
-        pending_restart_usernames = PendingRestartUsernames
-    } = gen_server:call({global, ?SERVER}, server_state),
-    case maps:get(Username, AllUsers, undefined) of
-        undefined ->
-            undefined;
-        #user_info{
-            password = Password,
-            ban_reason = BanReason
-        } ->
-            {Password, lists:member(Username, PendingRestartUsernames), BanReason}
-    end.
+    gen_server:call({global, ?SERVER}, {user, Username}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -297,49 +281,7 @@ pending_usernames() ->
 %%--------------------------------------------------------------------
 -spec server_status() -> ServerStatus :: server_status().
 server_status() ->
-    #state{online_users = OnlineUsers} = gen_server:call({global, ?SERVER}, server_state),
-    %% Collect memory usage - START
-    RawMemoryUsages = re:split(os:cmd("free"), "\n", [{return, binary}]),
-    {MemoryUsage, #{
-        <<"total_Mem">> := TotalMem,
-        <<"used_Mem">> := UsedMem
-    } = ValuesMap} = parse_memory_usage(RawMemoryUsages, {}, #{}),
-    error_logger:info_msg("Raw memroy usage:~p~nMap:~p~n", [MemoryUsage, ValuesMap]),
-    MemoryUsageBin = float_to_binary(UsedMem / TotalMem * 100, [{decimals, 2}]),
-    %% Collect memory usage - END
-
-    %% Collect temperature - START
-    TemperatureBin =
-        case file:read_file(?TEMPERATURE_FILEPATH) of
-            {ok, RetTemperatureBin} ->
-                RetTemperatureBin;
-            {error, _ReasonTemp} ->
-                <<>>
-        end,
-    %% Collect temperature - END
-
-    %% Collect cpu usage - START
-    CpuUsageBin =
-        case file:read_file(?CPU_USAGE_FILEPATH) of
-            {ok, RetCpuUsageBin} ->
-                RetCpuUsageBin;
-            {error, _ReasonCpu} ->
-                <<>>
-        end,
-    %% Collect cpu usage - END
-
-    #{
-        is_sb_server_up => is_sb_server_up(),
-        online_users => maps:fold(
-            fun(_Username, #user_info{
-                player_infos = PlayerInfosMap
-            }, AccPlayerInfosMap) ->
-                maps:merge(AccPlayerInfosMap, PlayerInfosMap)
-            end, #{}, OnlineUsers),
-        memory_usage => <<MemoryUsageBin/binary, "%">>,
-        temperature => TemperatureBin,
-        cpu_usage => <<CpuUsageBin/binary, "%">>
-    }.
+    gen_server:call({global, ?SERVER}, server_status).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -470,11 +412,16 @@ analyze_log(LineBin) ->
     all_users |
     online_users |
     server_state |
-    safe_start_cmd,
+    safe_start_cmd |
+    {user, Username} |
+    {add_user, Username, Password} |
+    server_status,
 
     Reply ::
     add_user_status() |
-    Users,
+    Users |
+    Username :: binary(),
+    Password :: binary(),
 
     Key :: binary(),
     Users :: map(),
@@ -502,7 +449,68 @@ handle_call(pending_usernames, _From, #state{pending_restart_usernames = Pending
 handle_call(server_state, _From, State) ->
     {reply, State, State};
 handle_call(safe_start_cmd, _From, State) ->
-    {reply, start_sb_cmd(State), State}.
+    {reply, start_sb_cmd(State), State};
+handle_call({user, Username}, _From, #state{
+    all_users = AllUsers,
+    pending_restart_usernames = PendingRestartUsernames
+} = State) ->
+    Result = case maps:get(Username, AllUsers, undefined) of
+                 undefined ->
+                     undefined;
+                 #user_info{
+                     password = Password,
+                     ban_reason = BanReason
+                 } ->
+                     {Password, lists:member(Username, PendingRestartUsernames), BanReason}
+             end,
+    {reply, Result, State};
+handle_call({add_user, Username, Password}, _From, State) ->
+    UpdatedState = add_user(Username, Password, State),
+    {Status, FinalState} = user_pending_restart(Username, UpdatedState),
+    {reply, Status, FinalState};
+handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
+    %% Collect memory usage - START
+    RawMemoryUsages = re:split(os:cmd("free"), "\n", [{return, binary}]),
+    {MemoryUsage, #{
+        <<"total_Mem">> := TotalMem,
+        <<"used_Mem">> := UsedMem
+    } = ValuesMap} = parse_memory_usage(RawMemoryUsages, {}, #{}),
+    error_logger:info_msg("Raw memroy usage:~p~nMap:~p~n", [MemoryUsage, ValuesMap]),
+    MemoryUsageBin = float_to_binary(UsedMem / TotalMem * 100, [{decimals, 2}]),
+    %% Collect memory usage - END
+
+    %% Collect temperature - START
+    TemperatureBin =
+        case file:read_file(?TEMPERATURE_FILEPATH) of
+            {ok, RetTemperatureBin} ->
+                RetTemperatureBin;
+            {error, _ReasonTemp} ->
+                <<>>
+        end,
+    %% Collect temperature - END
+
+    %% Collect cpu usage - START
+    CpuUsageBin =
+        case file:read_file(?CPU_USAGE_FILEPATH) of
+            {ok, RetCpuUsageBin} ->
+                RetCpuUsageBin;
+            {error, _ReasonCpu} ->
+                <<>>
+        end,
+    %% Collect cpu usage - END
+
+    {reply, #{
+        is_sb_server_up => is_sb_server_up(),
+        online_users => maps:fold(
+            fun(_Username, #user_info{
+                player_infos = PlayerInfosMap
+            }, AccPlayerInfosMap) ->
+                maps:merge(AccPlayerInfosMap, PlayerInfosMap)
+            end, #{}, OnlineUsers),
+        memory_usage => <<MemoryUsageBin/binary, "%">>,
+        temperature => TemperatureBin,
+        cpu_usage => <<CpuUsageBin/binary, "%">>
+    }, State}.
 
 %%--------------------------------------------------------------------
 %% @private
