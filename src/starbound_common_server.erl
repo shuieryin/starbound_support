@@ -469,7 +469,8 @@ analyze_log(LineBin) ->
     pending_usernames |
     all_users |
     online_users |
-    server_state,
+    server_state |
+    safe_start_cmd,
 
     Reply ::
     add_user_status() |
@@ -499,7 +500,9 @@ handle_call(online_users, _From, #state{online_users = OnlineUsers} = State) ->
 handle_call(pending_usernames, _From, #state{pending_restart_usernames = PendingRestartUsernames} = State) ->
     {reply, PendingRestartUsernames, State};
 handle_call(server_state, _From, State) ->
-    {reply, State, State}.
+    {reply, State, State};
+handle_call(safe_start_cmd, _From, State) ->
+    {reply, start_sb_cmd(State), State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -1020,3 +1023,13 @@ restart_sb_cmd(#state{sbfolder_path = SbFolderPath}) ->
     error_logger:info_msg("Execute server restart command~n"),
     os:cmd("cd " ++ SbFolderPath ++ ";./sb_server.sh restart"),
     ok.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Start Sb server cmd.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec start_sb_cmd(#state{}) -> binary().
+start_sb_cmd(#state{sbfolder_path = SbFolderPath}) ->
+    re:replace(os:cmd("cd " ++ SbFolderPath ++ "; ./sb_server.sh start"), "\n", "", [{return, binary}]).
