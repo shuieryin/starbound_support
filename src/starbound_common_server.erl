@@ -73,12 +73,12 @@
     analyze_pid :: pid()
 }).
 
-%%-record(sb_message, {
-%%    time :: binary(),
-%%    type :: 'Info' | 'Warning' | 'Error' | 'Debug',
-%%    server :: binary(),
-%%    content :: binary()
-%%}).
+-record(sb_message, {
+    time :: binary(),
+    type :: 'Info' | 'Warning' | 'Error' | 'Debug',
+    server :: binary(),
+    content :: binary()
+}).
 
 -type add_user_status() :: ok | user_exist.
 -type safe_restart_status() :: done | pending.
@@ -374,8 +374,13 @@ init(SbbConfigPath) ->
 -spec analyze_log(LineBin :: binary()) -> ok.
 analyze_log(LineBin) ->
     case re:run(LineBin, <<"^\\[(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]\\s+\\[(\\S*)\\]\\s+(\\S*):\\s+(.*)">>, [{capture, all_but_first, binary}]) of
-        {match, [_Time, _Type, _Server, Content]} ->
-            gen_server:cast({global, ?SERVER}, {analyze_log, Content});
+        {match, [Time, Type, Server, Content]} ->
+            gen_server:cast({global, ?SERVER}, {analyze_log, #sb_message{
+                time = Time,
+                type = binary_to_atom(Type, utf8),
+                server = Server,
+                content = Content
+            }});
         _NoMatch ->
             ok
     end.
@@ -570,13 +575,12 @@ parse_memory_usage([], {FinalMemoryUsages, _Headers}, FinalValuesMap) ->
     {stop, Reason, NewState} when
 
     Request ::
-    {analyze_log, Content :: binary()},
+    {analyze_log, #sb_message{}},
 
     State :: #state{},
     NewState :: State,
     Reason :: term(). % generic term
-handle_cast({analyze_log, Content}, State) ->
-    State = gen_server:call({global, ?SERVER}, server_state),
+handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
     UpdatedState = handle_logout(Content, State),
     UpdatedState1 = handle_login(Content, UpdatedState),
     UpdatedState2 = handle_restarted(Content, UpdatedState1),
