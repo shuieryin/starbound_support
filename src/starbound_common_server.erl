@@ -375,17 +375,7 @@ init(SbbConfigPath) ->
 analyze_log(LineBin) ->
     case re:run(LineBin, <<"^\\[(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]\\s+\\[(\\S*)\\]\\s+(\\S*):\\s+(.*)">>, [{capture, all_but_first, binary}]) of
         {match, [_Time, _Type, _Server, Content]} ->
-            spawn(
-                fun() ->
-                    State = gen_server:call({global, ?SERVER}, server_state),
-                    UpdatedState = handle_logout(Content, State),
-                    UpdatedState1 = handle_login(Content, UpdatedState),
-                    UpdatedState2 = handle_restarted(Content, UpdatedState1),
-                    UpdatedState3 = handle_errors(Content, UpdatedState2),
-                    ok = gen_server:cast({global, ?SERVER}, {update_state, UpdatedState3})
-                end
-            ),
-            ok;
+            gen_server:cast({global, ?SERVER}, {analyze_log, Content});
         _NoMatch ->
             ok
     end.
@@ -580,13 +570,18 @@ parse_memory_usage([], {FinalMemoryUsages, _Headers}, FinalValuesMap) ->
     {stop, Reason, NewState} when
 
     Request ::
-    {update_state, State},
+    {analyze_log, Content :: binary()},
 
     State :: #state{},
     NewState :: State,
     Reason :: term(). % generic term
-handle_cast({update_state, NewState}, _OldState) ->
-    {noreply, NewState}.
+handle_cast({analyze_log, Content}, State) ->
+    State = gen_server:call({global, ?SERVER}, server_state),
+    UpdatedState = handle_logout(Content, State),
+    UpdatedState1 = handle_login(Content, UpdatedState),
+    UpdatedState2 = handle_restarted(Content, UpdatedState1),
+    UpdatedState3 = handle_errors(Content, UpdatedState2),
+    {noreply, UpdatedState3}.
 
 %%--------------------------------------------------------------------
 %% @private
