@@ -24,3 +24,7 @@
 
 ## Sasl
 start_sasl
+
+## Limit port range for epmd
+inet_dist_listen_min 40000
+inet_dist_listen_max 40010
