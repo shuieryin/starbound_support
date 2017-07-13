@@ -45,7 +45,6 @@
 -define(SERVER, ?MODULE).
 -define(ANALYZE_PROCESS_NAME, read_sb_log).
 -define(TEMPERATURE_FILEPATH, "/root/starbound_support/temperature").
--define(CPU_USAGE_FILEPATH, "/root/starbound_support/cpuusage").
 
 -record(player_info, {
     player_name :: binary(),
@@ -485,13 +484,7 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
     %% Collect temperature - END
 
     %% Collect cpu usage - START
-    CpuUsageBin =
-        case file:read_file(?CPU_USAGE_FILEPATH) of
-            {ok, RetCpuUsageBin} ->
-                RetCpuUsageBin;
-            {error, _ReasonCpu} ->
-                <<>>
-        end,
+    CpuUsageBin = re:replace(os:cmd("top -bn1 | grep \"Cpu(s)\" | sed \"s/.*, *\\([0-9.]*\\)%* id.*/\\1/\" | awk '{print 100 - $1\"%\"}'"), "\n", "", [{return, binary}]),
     %% Collect cpu usage - END
 
     {reply, #{
