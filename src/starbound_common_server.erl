@@ -497,7 +497,7 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
             end, #{}, OnlineUsers),
         memory_usage => <<MemoryUsageBin/binary, "%">>,
         temperature => TemperatureBin,
-        cpu_usage => <<CpuUsageBin/binary, "%">>
+        cpu_usage => CpuUsageBin
     }, State}.
 
 %%--------------------------------------------------------------------
