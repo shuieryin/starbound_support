@@ -484,7 +484,7 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
     %% Collect temperature - END
 
     %% Collect cpu usage - START
-    CpuUsageBin = re:replace(os:cmd("top -bn1 | grep \"Cpu(s)\" | sed \"s/.*, *\\([0-9.]*\\)%* id.*/\\1/\" | awk '{print 100 - $1\"%\"}'"), "\n", "", [{return, binary}]),
+    CpuUsageBin = re:replace(os:cmd("top -bn 2 -d 0.01 | grep '^%Cpu' | tail -n 1 | awk '{print $2+$4+$6}'"), "\n", "", [{return, binary}]),
     %% Collect cpu usage - END
 
     {reply, #{
@@ -496,7 +496,7 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
                 maps:merge(AccPlayerInfosMap, PlayerInfosMap)
             end, #{}, OnlineUsers),
         memory_usage => <<MemoryUsageBin/binary, "%">>,
-        temperature => TemperatureBin,
+        temperature => <<TemperatureBin/binary, "%">>,
         cpu_usage => CpuUsageBin
     }, State}.
 
