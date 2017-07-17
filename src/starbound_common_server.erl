@@ -496,8 +496,8 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
                 maps:merge(AccPlayerInfosMap, PlayerInfosMap)
             end, #{}, OnlineUsers),
         memory_usage => <<MemoryUsageBin/binary, "%">>,
-        temperature => <<TemperatureBin/binary, "%">>,
-        cpu_usage => CpuUsageBin
+        temperature => TemperatureBin,
+        cpu_usage => <<CpuUsageBin/binary, "%">>
     }, State}.
 
 %%--------------------------------------------------------------------
