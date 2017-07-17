@@ -45,7 +45,7 @@ start(normal, [AppNameStr] = _StartArgs) ->
                 '_',
                 [
                     {
-                        "/apis/[...]",
+                        "/assets/[...]",
                         ?MODULE,
                         {priv_dir, AppName, "assets"}
                     },
