@@ -381,7 +381,7 @@ analyze_log(LineBin, LogFilePath) ->
     % filter location
     Filter2 = re:replace(Filter1, <<"[0-9\-]+\\:[0-9\-]+\\:[0-9\-]+">>, <<"-:-:-">>, [global, {return, binary}]),
     % filter unique hash
-    Filter3 = re:replace(Filter2, <<"\\:[a-z0-9]{33}">>, <<"-">>, [global, {return, binary}]),
+    Filter3 = re:replace(Filter2, <<"[a-z0-9]{33}">>, <<"-">>, [global, {return, binary}]),
     file:write_file(LogFilePath, Filter3, [append]),
     case re:run(LineBin, <<"^\\[(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]\\s+\\[(\\S*)\\]\\s+(\\S*):\\s+(.*)">>, [{capture, all_but_first, binary}]) of
         {match, [Time, Type, Server, Content]} ->
