@@ -13,8 +13,8 @@
 
 %% API
 -export([
-    start_link/1,
-    start/1,
+    start_link/2,
+    start/2,
     stop/0,
     get/1,
     all_configs/0,
@@ -69,7 +69,8 @@
     online_users = #{} :: #{Username :: binary() => #user_info{}},
     all_users = #{} :: #{Username :: binary() => #user_info{}},
     pending_restart_usernames = [] :: [binary()],
-    analyze_pid :: pid()
+    analyze_pid :: pid(),
+    app_name :: atom()
 }).
 
 -record(sb_message, {
@@ -100,9 +101,9 @@ cpu_usage => binary()
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec start_link(SbbConfigPath :: file:filename()) -> gen:start_ret().
-start_link(SbbConfigPath) ->
-    gen_server:start_link({global, ?SERVER}, ?MODULE, SbbConfigPath, []).
+-spec start_link(SbbConfigPath :: file:filename(), AppName :: atom()) -> gen:start_ret().
+start_link(SbbConfigPath, AppName) ->
+    gen_server:start_link({global, ?SERVER}, ?MODULE, {SbbConfigPath, AppName}, []).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -110,9 +111,9 @@ start_link(SbbConfigPath) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec start(SbbConfigPath :: file:filename()) -> gen:start_ret().
-start(SbbConfigPath) ->
-    gen_server:start({global, ?SERVER}, ?MODULE, SbbConfigPath, []).
+-spec start(SbbConfigPath :: file:filename(), AppName :: atom()) -> gen:start_ret().
+start(SbbConfigPath, AppName) ->
+    gen_server:start({global, ?SERVER}, ?MODULE, {SbbConfigPath, AppName}, []).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -297,7 +298,7 @@ server_status() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
--spec init(SbbConfigPath :: file:filename()) ->
+-spec init({SbbConfigPath :: file:filename(), AppName :: atom()}) ->
     {ok, State} |
     {ok, State, timeout() | hibernate} |
     {stop, Reason} |
@@ -305,7 +306,7 @@ server_status() ->
 
     State :: #state{},
     Reason :: term(). % generic term
-init(SbbConfigPath) ->
+init({SbbConfigPath, AppName}) ->
     io:format("~p starting...", [?MODULE]),
     {ok, RawSbbootConfig} = file:read_file(SbbConfigPath),
     SbbootConfig = json:from_binary(RawSbbootConfig),
@@ -315,6 +316,8 @@ init(SbbConfigPath) ->
     SbFolderPath = "/root/steamcmd/starbound/linux",
     LogPath = filename:join([ServerHomePath, "starbound_server.log"]),
     UsersInfoPath = filename:join([ServerHomePath, "users_info"]),
+    LogFilePath = filename:join([code:priv_dir(AppName), "assets", "starbound_server.log"]),
+    os:cmd("rm -f " ++ LogFilePath ++ "; echo 'start' | tee " ++ LogFilePath),
 
     AllUsers =
         case filelib:is_regular(UsersInfoPath) of
@@ -331,7 +334,7 @@ init(SbbConfigPath) ->
             false ->
                 #{};
             true ->
-                elib:for_each_line_in_file(LogPath, fun analyze_log/1)
+                elib:for_each_line_in_file(LogPath, fun analyze_log/2, LogFilePath)
         end,
 
     AnalyzePid =
@@ -339,7 +342,7 @@ init(SbbConfigPath) ->
             undefined ->
                 RawPid = spawn(
                     fun() ->
-                        elib:cmd("tail -fn0 " ++ LogPath, fun analyze_log/1)
+                        elib:cmd("tail -fn0 " ++ LogPath, fun analyze_log/2, LogFilePath)
                     end),
                 register(?ANALYZE_PROCESS_NAME, RawPid),
                 RawPid;
@@ -354,7 +357,8 @@ init(SbbConfigPath) ->
         sbboot_config_path = SbbConfigPath,
         all_users = AllUsers,
         online_users = OnlineUsers,
-        analyze_pid = AnalyzePid
+        analyze_pid = AnalyzePid,
+        app_name = AppName
     },
 
     {case IsSbServerUp of
@@ -370,8 +374,15 @@ init(SbbConfigPath) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec analyze_log(LineBin :: binary()) -> ok.
-analyze_log(LineBin) ->
+-spec analyze_log(LineBin :: binary(), LogFilePath :: file:filename()) -> ok.
+analyze_log(LineBin, LogFilePath) ->
+    % filter ip address
+    Filter1 = re:replace(LineBin, <<"\\w{4}:\\w{4}:\\w{4}:\\w{4}:\\w{4}:\\w{4}:\\w{4}:\\w{4}">>, <<"-:-:-:-:-:-:-:-">>, [global, {return, binary}]),
+    % filter location
+    Filter2 = re:replace(Filter1, <<"[0-9\-]+\\:[0-9\-]+\\:[0-9\-]+">>, <<"-:-:-">>, [global, {return, binary}]),
+    % filter unique hash
+    Filter3 = re:replace(Filter2, <<"\\:[a-z0-9]{33}">>, <<"-">>, [global, {return, binary}]),
+    file:write_file(LogFilePath, Filter3, [append]),
     case re:run(LineBin, <<"^\\[(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]\\s+\\[(\\S*)\\]\\s+(\\S*):\\s+(.*)">>, [{capture, all_but_first, binary}]) of
         {match, [Time, Type, Server, Content]} ->
             gen_server:cast({global, ?SERVER}, {analyze_log, #sb_message{

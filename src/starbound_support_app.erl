@@ -78,7 +78,7 @@ start(normal, [AppNameStr] = _StartArgs) ->
             io:format("websockets started on port:~p~nLoad the page http://localhost:~p/ in your browser~n", [Port, Port])
     end,
 
-    {ok, Pid} = starbound_support_sup:start_link(?SBBCONFIG_PATH),
+    {ok, Pid} = starbound_support_sup:start_link(?SBBCONFIG_PATH, AppName),
     ok = elib:show_errors(20),
     {ok, Pid, #state{}}.
 
@@ -96,7 +96,7 @@ start(normal, [AppNameStr] = _StartArgs) ->
     HttpReply :: {ok, Resp, cowboy_middleware:env()},
     Resp :: cowboy_req:req(),
     Env :: {priv_dir, AppName :: atom(), StaticFolder :: list()}.
-init(Req, {priv_dir, AppName, StaticFolder} = Env) ->
+init(Req, {priv_dir, _AppName, _StaticFolder} = Env) ->
     % error_logger:info_msg("Request raw:~p~nEnv:~p~n", [Req, Env]),
     Resource = path(Req),
     % error_logger:info_msg("Resource:~p~n", [Resource]),
@@ -106,17 +106,6 @@ init(Req, {priv_dir, AppName, StaticFolder} = Env) ->
             Mod = list_to_atom(UriStr),
             Pid = spawn_link(Mod, start, [Self]),
             {cowboy_websocket, Req, Pid};
-        ["/", "assets", Filename] ->
-            StaticFolderPath = filename:join([code:priv_dir(AppName), StaticFolder, Filename]),
-            ReturnContent =
-                case file:read_file(StaticFolderPath) of
-                    {ok, FileBin} ->
-                        FileBin;
-                    Error ->
-                        list_to_binary(io_lib:format("~p", [Error]))
-                end,
-
-            {ok, cowboy_req:reply(200, #{}, ReturnContent, Req), Env};
         _Resource ->
             error_logger:info_msg("not found:~p~n", [_Resource]),
             {ok, cowboy_req:reply(200, #{}, <<>>, Req), Env}
