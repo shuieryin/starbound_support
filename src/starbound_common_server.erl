@@ -377,12 +377,14 @@ init({SbbConfigPath, AppName}) ->
 -spec analyze_log(LineBin :: binary(), LogFilePath :: file:filename()) -> ok.
 analyze_log(LineBin, LogFilePath) ->
     % filter ip address
-    Filter1 = re:replace(LineBin, <<"\\w{4}:\\w{4}:\\w{4}:\\w{4}:\\w{4}:\\w{4}:\\w{4}:\\w{4}">>, <<"-:-:-:-:-:-:-:-">>, [global, {return, binary}]),
+    Filter1 = re:replace(LineBin, <<"[a-z0-9]{4}:[a-z0-9]{4}:[a-z0-9]{4}:[a-z0-9]{4}:[a-z0-9]{4}:[a-z0-9]{4}:[a-z0-9]{4}:[a-z0-9]{4}">>, <<"[x:x:x:x:x:x:x:x]">>, [global, {return, binary}]),
     % filter location
-    Filter2 = re:replace(Filter1, <<"[0-9\-]+\\:[0-9\-]+\\:[0-9\-]+">>, <<"-:-:-">>, [global, {return, binary}]),
+    Filter2 = re:replace(Filter1, <<"[0-9\-]+\\:[0-9\-]+\\:[0-9\-]+\\:[0-9\-]+">>, <<"[x:x:x:x]">>, [global, {return, binary}]),
+    Filter3 = re:replace(Filter2, <<"\\=\\d+\\.\\d+\\.\\d+\\.\\d+">>, <<"=[x:x:x:x]">>, [global, {return, binary}]),
+    Filter4 = re:replace(Filter3, <<"\\([0-9\\s,]+\\)">>, <<"(x)">>, [global, {return, binary}]),
     % filter unique hash
-    Filter3 = re:replace(Filter2, <<"[a-z0-9]{33}">>, <<"-">>, [global, {return, binary}]),
-    file:write_file(LogFilePath, <<Filter3/binary, "\n">>, [append]),
+    Filter5 = re:replace(Filter4, <<"[a-z0-9]{30,}">>, <<"[x]">>, [global, {return, binary}]),
+    file:write_file(LogFilePath, <<Filter5/binary, "\n">>, [append]),
     case re:run(LineBin, <<"^\\[(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]\\s+\\[(\\S*)\\]\\s+(\\S*):\\s+(.*)">>, [{capture, all_but_first, binary}]) of
         {match, [Time, Type, Server, Content]} ->
             gen_server:cast({global, ?SERVER}, {analyze_log, #sb_message{
