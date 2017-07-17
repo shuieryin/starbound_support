@@ -380,8 +380,8 @@ analyze_log(LineBin, LogFilePath) ->
     Filter1 = re:replace(LineBin, <<"[a-z0-9]{4}:[a-z0-9]{4}:[a-z0-9]{4}:[a-z0-9]{4}:[a-z0-9]{4}:[a-z0-9]{4}:[a-z0-9]{4}:[a-z0-9]{4}">>, <<"[x:x:x:x:x:x:x:x]">>, [global, {return, binary}]),
     % filter location
     Filter2 = re:replace(Filter1, <<"[0-9\-]+\\:[0-9\-]+\\:[0-9\-]+\\:[0-9\-]+">>, <<"[x:x:x:x]">>, [global, {return, binary}]),
-    Filter3 = re:replace(Filter2, <<"\\=\\d+\\.\\d+\\.\\d+\\.\\d+">>, <<"=[x:x:x:x]">>, [global, {return, binary}]),
-    Filter4 = re:replace(Filter3, <<"\\([0-9\\s,]+\\)">>, <<"(x)">>, [global, {return, binary}]),
+    Filter3 = re:replace(Filter2, <<"\\=[\\d\\.]+">>, <<"=[x]">>, [global, {return, binary}]),
+    Filter4 = re:replace(Filter3, <<"\\([0-9\\s,-]+\\)">>, <<"(x)">>, [global, {return, binary}]),
     % filter unique hash
     Filter5 = re:replace(Filter4, <<"[a-z0-9]{30,}">>, <<"[x]">>, [global, {return, binary}]),
     file:write_file(LogFilePath, <<Filter5/binary, "\n">>, [append]),
