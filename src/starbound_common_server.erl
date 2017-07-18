@@ -309,7 +309,8 @@ server_status() ->
 init({SbbConfigPath, AppName}) ->
     io:format("~p starting...", [?MODULE]),
     {ok, RawSbbootConfig} = file:read_file(SbbConfigPath),
-    SbbootConfig = json:from_binary(RawSbbootConfig),
+    SbbootConfig = jsx:decode(RawSbbootConfig, [return_maps]),
+    error_logger:info_msg("SbbootConfig:~p~n", [SbbootConfig]),
     io:format("started~n"),
 
     ServerHomePath = "/root/steamcmd/starbound/storage",
@@ -1006,7 +1007,8 @@ write_users_info(#state{
             UpdatedAllUsersBin = io_lib:format("~tp.", [AllUsers]),
             file:write_file(UsersInfoPath, UpdatedAllUsersBin),
 
-            SbbConfigBin = json:to_binary(SbbConfig),
+            error_logger:info_msg("SbbConfig:~p~n", [SbbConfig]),
+            SbbConfigBin = jsx:encode(SbbConfig),
             file:write_file(SbbConfigPath, SbbConfigBin)
         end).
 
