@@ -329,7 +329,6 @@ init({SbbConfigPath, AppName}) ->
     {ok, RawSbbootConfig} = file:read_file(SbbConfigPath),
     SbbootConfig = jsx:decode(RawSbbootConfig, [return_maps]),
     % error_logger:info_msg("SbbootConfig:~p~n", [SbbootConfig]),
-    {ok, ?MODULE} = dets:open_file(?MODULE, [{file, ?MODULE_STRING}]),
 
     ServerHomePath = "/root/steamcmd/starbound/storage",
     SbFolderPath = "/root/steamcmd/starbound/linux",
@@ -337,6 +336,7 @@ init({SbbConfigPath, AppName}) ->
     UsersInfoPath = filename:join([ServerHomePath, "users_info"]),
     LogFilePath = filename:join([code:priv_dir(AppName), "assets", "starbound_server.log"]),
     os:cmd("rm -f " ++ LogFilePath ++ "; echo 'start' | tee " ++ LogFilePath),
+    {ok, ?MODULE} = dets:open_file(?MODULE, [{file, filename:join([ServerHomePath, ?MODULE_STRING])}]),
 
     AllUsers =
         case filelib:is_regular(UsersInfoPath) of
