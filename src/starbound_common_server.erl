@@ -595,7 +595,7 @@ handle_call({make_player_admin, Username}, _From, #state{
                         }
                     }
                 },
-                write_users_info(ReturnState),
+                ok = write_users_info(ReturnState, false),
                 ReturnState;
             _Other ->
                 State
@@ -842,7 +842,7 @@ add_user(Username, Password, #state{
         }
     },
 
-    write_users_info(UpdatedState),
+    ok = write_users_info(UpdatedState, false),
 
     error_logger:info_msg("Added username:[~p], password:[~p]", [Username, Password]),
 
@@ -875,7 +875,7 @@ ban_user(Username, BanReason, #state{
         sbboot_config = UpdatedSbbConfig
     },
 
-    write_users_info(UpdatedState),
+    ok = write_users_info(UpdatedState, false),
 
     error_logger:info_msg("Banned username:[~p]", [Username]),
 
@@ -917,7 +917,7 @@ unban_user(Username, #state{
         }
     },
 
-    write_users_info(UpdatedState),
+    ok = write_users_info(UpdatedState, false),
     error_logger:info_msg("Unbanned username:[~p], password:[~p]", [Username, Password]),
 
     UpdatedState.
@@ -966,7 +966,7 @@ handle_login(Content, #state{
                             }
                         },
 
-                        write_users_info(AddMissingUserState),
+                        write_users_info(AddMissingUserState, true),
                         RawExistingUser;
                     Found ->
                         Found
@@ -996,7 +996,7 @@ handle_login(Content, #state{
                                 }
                             }
                         },
-                        write_users_info(ReturnState),
+                        write_users_info(ReturnState, true),
                         ReturnState;
                     _DuplicatedLogin ->
                         error_logger:info_msg("Ban User <~p> due to duplicated login at same time.~nPlayer name: <~p>~n", [Username, PlayerName]),
@@ -1118,22 +1118,38 @@ user_pending_restart(Username, #state{
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec write_users_info(#state{}) -> pid().
-write_users_info(#state{
+-spec write_users_info(#state{}, boolean()) -> pid() | ok.
+write_users_info(State, IsAsync) ->
+    case IsAsync of
+        false ->
+            write_users_info_sync(State);
+        true ->
+            spawn(
+                fun() ->
+                    write_users_info_sync(State)
+                end
+            )
+    end.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Write users info to local file
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec write_users_info_sync(#state{}) -> ok.
+write_users_info_sync(#state{
     all_users = AllUsers,
     user_info_path = UsersInfoPath,
     sbboot_config = SbbConfig,
     sbboot_config_path = SbbConfigPath
 }) ->
-    spawn(
-        fun() ->
-            UpdatedAllUsersBin = io_lib:format("~tp.", [AllUsers]),
-            file:write_file(UsersInfoPath, UpdatedAllUsersBin),
+    UpdatedAllUsersBin = io_lib:format("~tp.", [AllUsers]),
+    file:write_file(UsersInfoPath, UpdatedAllUsersBin),
 
-            error_logger:info_msg("SbbConfig:~p~n", [SbbConfig]),
-            SbbConfigBin = jsx:encode(SbbConfig),
-            file:write_file(SbbConfigPath, SbbConfigBin)
-        end).
+    error_logger:info_msg("SbbConfig:~p~n", [SbbConfig]),
+    SbbConfigBin = jsx:encode(SbbConfig),
+    file:write_file(SbbConfigPath, SbbConfigBin).
 
 %%--------------------------------------------------------------------
 %% @doc
