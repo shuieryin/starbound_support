@@ -90,7 +90,7 @@
 -type add_user_status() :: ok | user_exist.
 -type safe_restart_status() :: done | pending.
 -type ban_reason() :: simultaneously_duplicated_login | login_always_cause_server_down | undefined.
--type apply_admin_status() :: done | pending | existing_admin_online | invalid_admin_player.
+-type alter_admin_status() :: done | pending | existing_admin_online | invalid_admin_player | no_change.
 -type server_status() :: #{
 is_sb_server_up => boolean(),
 online_users => #{Username :: binary() => #player_info{}},
@@ -297,7 +297,7 @@ server_status() ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec make_player_admin(Username) -> apply_admin_status() when
+-spec make_player_admin(Username) -> alter_admin_status() when
     Username :: binary().
 make_player_admin(Username) ->
     gen_server:call({global, ?SERVER}, {make_player_admin, Username}).
@@ -308,7 +308,7 @@ make_player_admin(Username) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec remove_player_admin(Username) -> apply_admin_status() when
+-spec remove_player_admin(Username) -> alter_admin_status() when
     Username :: binary().
 remove_player_admin(Username) ->
     gen_server:call({global, ?SERVER}, {remove_player_admin, Username}).
@@ -472,7 +472,7 @@ analyze_log(LineBin, LogFilePath) ->
     Reply ::
     add_user_status() |
     Users |
-    apply_admin_status(),
+    alter_admin_status(),
 
     Username :: binary(),
     Password :: binary(),
@@ -734,35 +734,21 @@ handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
     UpdatedState3 = handle_errors(Content, UpdatedState2),
     {noreply, UpdatedState3};
 handle_cast(clear_admin_user, #state{
-    sbboot_config = #{
-        <<"serverUsers">> := ExistingServerUsers
-    } = SbbConfig,
     admin_player = AdminPlayer
 } = State) ->
     error_logger:info_msg("AdminPlayer:~p~n", [AdminPlayer]),
-    UpdatedState =
-        case AdminPlayer of
-            undefined ->
-                State;
-            {Username, ExpireTime} ->
-                case elib:timestamp() > ExpireTime of
-                    true ->
-                        ExistingUser = maps:get(Username, ExistingServerUsers),
-                        State#state{
-                            admin_player = undefined,
-                            sbboot_config = SbbConfig#{
-                                <<"serverUsers">> := ExistingServerUsers#{
-                                    Username := ExistingUser#{
-                                        <<"admin">> => false
-                                    }
-                                }
-                            }
-                        };
-                    false ->
-                        State
-                end
-        end,
-    {noreply, UpdatedState}.
+    case AdminPlayer of
+        undefined ->
+            State;
+        {Username, ExpireTime} ->
+            case elib:timestamp() > ExpireTime of
+                true ->
+                    remove_player_admin(Username);
+                false ->
+                    ok
+            end
+    end,
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -1250,7 +1236,6 @@ server_interval(Seconds) ->
             server_interval(NewSeconds)
     after
         10000 ->
-            error_logger:info_msg("Seconds:~p~n", [Seconds]),
             if
                 Seconds rem 10 == 0 ->
                     ok = gen_server:cast(?SERVER, clear_admin_user),
