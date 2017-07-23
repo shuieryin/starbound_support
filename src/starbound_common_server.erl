@@ -721,8 +721,7 @@ parse_memory_usage([], {FinalMemoryUsages, _Headers}, FinalValuesMap) ->
     {stop, Reason, NewState} when
 
     Request ::
-    {analyze_log, #sb_message{}} |
-    clear_admin_user,
+    {analyze_log, #sb_message{}},
 
     State :: #state{},
     NewState :: State,
@@ -732,23 +731,7 @@ handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
     UpdatedState1 = handle_login(Content, UpdatedState),
     UpdatedState2 = handle_restarted(Content, UpdatedState1),
     UpdatedState3 = handle_errors(Content, UpdatedState2),
-    {noreply, UpdatedState3};
-handle_cast(clear_admin_user, #state{
-    admin_player = AdminPlayer
-} = State) ->
-    error_logger:info_msg("AdminPlayer:~p~n", [AdminPlayer]),
-    case AdminPlayer of
-        undefined ->
-            State;
-        {Username, ExpireTime} ->
-            case elib:timestamp() > ExpireTime of
-                true ->
-                    remove_player_admin(Username);
-                false ->
-                    ok
-            end
-    end,
-    {noreply, State}.
+    {noreply, UpdatedState3}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -1238,7 +1221,25 @@ server_interval(Seconds) ->
         10000 ->
             if
                 Seconds rem 10 == 0 ->
-                    ok = gen_server:cast({global, ?SERVER}, clear_admin_user),
+                    spawn(
+                        fun() ->
+                            #state{
+                                admin_player = AdminPlayer
+                            } = gen_server:call({global, ?SERVER}, server_state),
+                            error_logger:info_msg("AdminPlayer:~p~n", [AdminPlayer]),
+                            case AdminPlayer of
+                                undefined ->
+                                    ok;
+                                {Username, ExpireTime} ->
+                                    case elib:timestamp() > ExpireTime of
+                                        true ->
+                                            remove_player_admin(Username);
+                                        false ->
+                                            ok
+                                    end
+                            end
+                        end
+                    ),
                     ten_seconds;
                 true ->
                     do_nothing
