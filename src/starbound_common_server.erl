@@ -47,7 +47,7 @@
 -define(SERVER, ?MODULE).
 -define(ANALYZE_PROCESS_NAME, read_sb_log).
 -define(TEMPERATURE_FILEPATH, "/root/starbound_support/temperature").
--define(ADMIN_EXPIRE_TIME, 60).
+-define(ADMIN_EXPIRE_TIME, 60 * 60 * 2).
 -define(VALID_ADMIN_PLAYERS, [<<"shuieryin">>, <<"wormgun">>, <<"alex">>]).
 
 -record(player_info, {
@@ -647,7 +647,8 @@ handle_call({remove_player_admin, Username}, _From, #state{
                     }
                 },
                 ok = write_users_info(ReturnState, false),
-                user_pending_restart(Username, ReturnState);
+                ok = restart_sb_cmd(ReturnState),
+                done;
             false ->
                 {no_change, State}
         end,
@@ -1226,7 +1227,7 @@ server_interval(Seconds) ->
                             #state{
                                 admin_player = AdminPlayer
                             } = gen_server:call({global, ?SERVER}, server_state),
-                            error_logger:info_msg("AdminPlayer:~p~n", [AdminPlayer]),
+                            % error_logger:info_msg("AdminPlayer:~p~n", [AdminPlayer]),
                             case AdminPlayer of
                                 undefined ->
                                     ok;
