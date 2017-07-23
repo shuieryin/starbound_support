@@ -46,7 +46,7 @@
 -define(SERVER, ?MODULE).
 -define(ANALYZE_PROCESS_NAME, read_sb_log).
 -define(TEMPERATURE_FILEPATH, "/root/starbound_support/temperature").
--define(ADMIN_EXPIRE_TIME, 3600 * 2).
+-define(ADMIN_EXPIRE_TIME, 60).
 -define(VALID_ADMIN_PLAYERS, [<<"wormgun">>, <<"alex">>]).
 
 -record(player_info, {
