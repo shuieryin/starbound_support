@@ -29,7 +29,8 @@
     safe_restart_sb/0,
     pending_usernames/0,
     server_status/0,
-    make_player_admin/1
+    make_player_admin/1,
+    remove_player_admin/1
 ]).
 
 %% gen_server callbacks
@@ -292,7 +293,7 @@ server_status() ->
 
 %%--------------------------------------------------------------------
 %% @doc
-%% Add username and password.
+%% Add admin right for user.
 %%
 %% @end
 %%--------------------------------------------------------------------
@@ -300,6 +301,17 @@ server_status() ->
     Username :: binary().
 make_player_admin(Username) ->
     gen_server:call({global, ?SERVER}, {make_player_admin, Username}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Remove admin right from user.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec remove_player_admin(Username) -> apply_admin_status() when
+    Username :: binary().
+remove_player_admin(Username) ->
+    gen_server:call({global, ?SERVER}, {remove_player_admin, Username}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -582,7 +594,7 @@ handle_call({make_player_admin, Username}, _From, #state{
 
     error_logger:info_msg("Status:~p~n", [Status]),
 
-    UpdatedState =
+    {UpdatedStatus, UpdatedState} =
         case Status of
             done ->
                 ExistingUser = maps:get(Username, ExistingServerUsers),
@@ -599,16 +611,47 @@ handle_call({make_player_admin, Username}, _From, #state{
                     }
                 },
                 ok = write_users_info(ReturnState, false),
-                ReturnState;
+                user_pending_restart(Username, ReturnState);
             _Other ->
-                State
+                {Status, State}
         end,
 
-    {UpdatedStatus, FinalState} = user_pending_restart(Username, UpdatedState),
-
-    {reply, UpdatedStatus, FinalState};
-handle_call(state, _From, State) ->
-    {reply, State, State}.
+    {reply, UpdatedStatus, UpdatedState};
+handle_call({remove_player_admin, Username}, _From, #state{
+    admin_player = AdminPlayer,
+    sbboot_config = #{
+        <<"serverUsers">> := ExistingServerUsers
+    } = SbbConfig
+} = State) ->
+    #{
+        <<"admin">> := IsAdmin
+    } = ExistingUser = maps:get(Username, ExistingServerUsers),
+    {UpdatedStatus, UpdatedState} =
+        case IsAdmin of
+            true ->
+                UpdatedAdminPlayer =
+                    case AdminPlayer of
+                        {Username, _ExpireTime} ->
+                            undefined;
+                        _OtherAdminPlayer ->
+                            AdminPlayer
+                    end,
+                ReturnState = State#state{
+                    admin_player = UpdatedAdminPlayer,
+                    sbboot_config = SbbConfig#{
+                        <<"serverUsers">> := ExistingServerUsers#{
+                            Username => ExistingUser#{
+                                <<"admin">> => true
+                            }
+                        }
+                    }
+                },
+                ok = write_users_info(ReturnState, false),
+                user_pending_restart(Username, ReturnState);
+            false ->
+                {no_change, State}
+        end,
+    {reply, UpdatedStatus, UpdatedState}.
 
 %%--------------------------------------------------------------------
 %% @private
