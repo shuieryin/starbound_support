@@ -1236,7 +1236,7 @@ server_interval(Seconds) ->
             server_interval(NewSeconds)
     after
         10000 ->
-            error_logger:info_msg("~p Seconds rem 10:~p~n", [Seconds, Seconds rem 10]),
+            error_logger:info_msg("~p Seconds rem 10 == 0:~p~n", [Seconds, Seconds rem 10 == 0]),
             if
                 Seconds rem 10 == 0 ->
                     ok = gen_server:cast(?SERVER, clear_admin_user),
