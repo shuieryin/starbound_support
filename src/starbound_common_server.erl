@@ -641,7 +641,7 @@ handle_call({remove_player_admin, Username}, _From, #state{
                     sbboot_config = SbbConfig#{
                         <<"serverUsers">> := ExistingServerUsers#{
                             Username => ExistingUser#{
-                                <<"admin">> => true
+                                <<"admin">> => false
                             }
                         }
                     }
