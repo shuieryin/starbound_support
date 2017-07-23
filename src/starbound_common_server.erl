@@ -28,7 +28,8 @@
     restart_sb/0,
     safe_restart_sb/0,
     pending_usernames/0,
-    server_status/0
+    server_status/0,
+    make_player_admin/1
 ]).
 
 %% gen_server callbacks
@@ -45,6 +46,8 @@
 -define(SERVER, ?MODULE).
 -define(ANALYZE_PROCESS_NAME, read_sb_log).
 -define(TEMPERATURE_FILEPATH, "/root/starbound_support/temperature").
+-define(ADMIN_EXPIRE_TIME, 3600 * 2).
+-define(VALID_ADMIN_PLAYERS, [<<"wormgun">>, <<"alex">>]).
 
 -record(player_info, {
     player_name :: binary(),
@@ -70,7 +73,10 @@
     all_users = #{} :: #{Username :: binary() => #user_info{}},
     pending_restart_usernames = [] :: [binary()],
     analyze_pid :: pid(),
-    app_name :: atom()
+    app_name :: atom(),
+    admin_player :: undefined | {Username :: binary(), ExpireTimestamp :: pos_integer()},
+    valid_admin_players = ?VALID_ADMIN_PLAYERS :: [Username :: binary()],
+    server_interval_pid :: pid()
 }).
 
 -record(sb_message, {
@@ -83,6 +89,7 @@
 -type add_user_status() :: ok | user_exist.
 -type safe_restart_status() :: done | pending.
 -type ban_reason() :: simultaneously_duplicated_login | login_always_cause_server_down | undefined.
+-type apply_admin_status() :: done | pending | existing_admin_online | invalid_admin_player.
 -type server_status() :: #{
 is_sb_server_up => boolean(),
 online_users => #{Username :: binary() => #player_info{}},
@@ -283,6 +290,17 @@ pending_usernames() ->
 server_status() ->
     gen_server:call({global, ?SERVER}, server_status).
 
+%%--------------------------------------------------------------------
+%% @doc
+%% Add username and password.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec make_player_admin(Username) -> apply_admin_status() when
+    Username :: binary().
+make_player_admin(Username) ->
+    gen_server:call({global, ?SERVER}, {make_player_admin, Username}).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -311,7 +329,7 @@ init({SbbConfigPath, AppName}) ->
     {ok, RawSbbootConfig} = file:read_file(SbbConfigPath),
     SbbootConfig = jsx:decode(RawSbbootConfig, [return_maps]),
     error_logger:info_msg("SbbootConfig:~p~n", [SbbootConfig]),
-    io:format("started~n"),
+    {ok, ?MODULE} = dets:open_file(?MODULE, [{file, ?MODULE_STRING}]),
 
     ServerHomePath = "/root/steamcmd/starbound/storage",
     SbFolderPath = "/root/steamcmd/starbound/linux",
@@ -359,8 +377,21 @@ init({SbbConfigPath, AppName}) ->
         all_users = AllUsers,
         online_users = OnlineUsers,
         analyze_pid = AnalyzePid,
-        app_name = AppName
+        app_name = AppName,
+        admin_player = case dets:lookup(?MODULE, admin_player) of
+                           [] ->
+                               undefined;
+                           [{admin_player, AdminPlayer}] ->
+                               AdminPlayer
+                       end,
+        server_interval_pid = spawn(
+            fun() ->
+                server_interval(0)
+            end
+        )
     },
+
+    io:format("started~n"),
 
     {case IsSbServerUp of
          true ->
@@ -423,11 +454,14 @@ analyze_log(LineBin, LogFilePath) ->
     safe_start_cmd |
     {user, Username} |
     {add_user, Username, Password} |
-    server_status,
+    server_status |
+    {make_player_admin, Username},
 
     Reply ::
     add_user_status() |
-    Users,
+    Users |
+    apply_admin_status(),
+
     Username :: binary(),
     Password :: binary(),
 
@@ -512,7 +546,66 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
         memory_usage => <<MemoryUsageBin/binary, "%">>,
         temperature => TemperatureBin,
         cpu_usage => <<CpuUsageBin/binary, "%">>
-    }, State}.
+    }, State};
+handle_call({make_player_admin, Username}, _From, #state{
+    valid_admin_players = ValidAdminPlayers,
+    admin_player = AdminPlayer,
+    online_users = OnlineUsers,
+    sbboot_config = #{
+        <<"serverUsers">> := ExistingServerUsers
+    } = SbbConfig
+} = State) ->
+    Now = elib:timestamp(),
+    Status =
+        case lists:member(Username, ValidAdminPlayers) of
+            true ->
+                case AdminPlayer of
+                    undefined ->
+                        done;
+                    {ExistingUsername, ExpireTime} ->
+                        case Now =< ExpireTime of
+                            true ->
+                                case maps:is_key(ExistingUsername, OnlineUsers) of
+                                    true ->
+                                        existing_admin_online;
+                                    false ->
+                                        done
+                                end;
+                            false ->
+                                done
+                        end
+                end;
+            false ->
+                invalid_admin_player
+        end,
+
+    UpdatedState =
+        case Status of
+            done ->
+                ExistingUser = maps:get(Username, ExistingServerUsers),
+                NewAdminPlayer = {Username, Now + ?ADMIN_EXPIRE_TIME},
+                ok = dets:insert(?MODULE, {admin_player, NewAdminPlayer}),
+                ReturnState = State#state{
+                    admin_player = NewAdminPlayer,
+                    sbboot_config = SbbConfig#{
+                        <<"serverUsers">> := ExistingServerUsers#{
+                            Username => ExistingUser#{
+                                <<"admin">> => true
+                            }
+                        }
+                    }
+                },
+                write_users_info(ReturnState),
+                ReturnState;
+            _Other ->
+                State
+        end,
+
+    {UpdatedStatus, FinalState} = user_pending_restart(Username, UpdatedState),
+
+    {reply, UpdatedStatus, FinalState};
+handle_call(state, _From, State) ->
+    {reply, State, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -582,7 +675,8 @@ parse_memory_usage([], {FinalMemoryUsages, _Headers}, FinalValuesMap) ->
     {stop, Reason, NewState} when
 
     Request ::
-    {analyze_log, #sb_message{}},
+    {analyze_log, #sb_message{}} |
+    clear_admin_user,
 
     State :: #state{},
     NewState :: State,
@@ -592,7 +686,36 @@ handle_cast({analyze_log, #sb_message{content = Content}}, State) ->
     UpdatedState1 = handle_login(Content, UpdatedState),
     UpdatedState2 = handle_restarted(Content, UpdatedState1),
     UpdatedState3 = handle_errors(Content, UpdatedState2),
-    {noreply, UpdatedState3}.
+    {noreply, UpdatedState3};
+handle_cast(clear_admin_user, #state{
+    sbboot_config = #{
+        <<"serverUsers">> := ExistingServerUsers
+    } = SbbConfig,
+    admin_player = AdminPlayer
+} = State) ->
+    UpdatedState =
+        case AdminPlayer of
+            undefined ->
+                State;
+            {Username, ExpireTime} ->
+                case elib:timestamp() > ExpireTime of
+                    true ->
+                        ExistingUser = maps:get(Username, ExistingServerUsers),
+                        State#state{
+                            admin_player = undefined,
+                            sbboot_config = SbbConfig#{
+                                <<"serverUsers">> := ExistingServerUsers#{
+                                    Username := ExistingUser#{
+                                        <<"admin">> => false
+                                    }
+                                }
+                            }
+                        };
+                    false ->
+                        State
+                end
+        end,
+    {noreply, UpdatedState}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -1048,3 +1171,70 @@ restart_sb_cmd(#state{sbfolder_path = SbFolderPath}) ->
 -spec start_sb_cmd(#state{}) -> binary().
 start_sb_cmd(#state{sbfolder_path = SbFolderPath}) ->
     re:replace(os:cmd("cd " ++ SbFolderPath ++ "; ./sb_server.sh start"), "\n", "", [{return, binary}]).
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% server interval
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec server_interval(Seconds :: integer()) -> no_return().
+server_interval(Seconds) ->
+    Self = self(),
+    receive
+        {update_interval, Self, NewSeconds} ->
+            server_interval(NewSeconds)
+    after
+        10000 ->
+            if
+                Seconds rem 10 == 0 ->
+                    ok = gen_server:cast(?SERVER, clear_admin_user),
+                    ten_seconds;
+                true ->
+                    do_nothing
+            end,
+
+            if
+                Seconds rem 60 == 0 ->
+                    one_minute;
+                true ->
+                    do_nothing
+            end,
+
+            if
+                Seconds rem 1800 == 0 ->
+                    half_hour;
+                true ->
+                    do_nothing
+            end,
+
+            if
+                Seconds rem 3600 == 0 ->
+                    an_hour;
+                true ->
+                    do_nothing
+            end,
+
+            if
+                Seconds rem (3600 * 24) == 0 ->
+                    one_day;
+                true ->
+                    do_nothing
+            end,
+
+            AWeekSeconds = 3600 * 24 * 7,
+            if
+                Seconds rem (AWeekSeconds) == 0 ->
+                    one_week;
+                true ->
+                    do_nothing
+            end,
+
+            case Seconds > AWeekSeconds of
+                true ->
+                    server_interval(0);
+                false ->
+                    server_interval(Seconds + 10)
+            end
+    end.
