@@ -556,6 +556,7 @@ handle_call({make_player_admin, Username}, _From, #state{
     } = SbbConfig
 } = State) ->
     Now = elib:timestamp(),
+    error_logger:info_msg("ValidAdminPlayers:~p~n", [ValidAdminPlayers]),
     Status =
         case lists:member(Username, ValidAdminPlayers) of
             true ->
@@ -578,6 +579,8 @@ handle_call({make_player_admin, Username}, _From, #state{
             false ->
                 invalid_admin_player
         end,
+
+    error_logger:info_msg("Status:~p~n", [Status]),
 
     UpdatedState =
         case Status of
@@ -693,6 +696,7 @@ handle_cast(clear_admin_user, #state{
     } = SbbConfig,
     admin_player = AdminPlayer
 } = State) ->
+    error_logger:info_msg("AdminPlayer:~p~n", [AdminPlayer]),
     UpdatedState =
         case AdminPlayer of
             undefined ->
