@@ -48,7 +48,7 @@
 -define(ANALYZE_PROCESS_NAME, read_sb_log).
 -define(TEMPERATURE_FILEPATH, "/root/starbound_support/temperature").
 -define(ADMIN_EXPIRE_TIME, 60).
--define(VALID_ADMIN_PLAYERS, [<<"wormgun">>, <<"alex">>]).
+-define(VALID_ADMIN_PLAYERS, [<<"shuieryin">>, <<"wormgun">>, <<"alex">>]).
 
 -record(player_info, {
     player_name :: binary(),
@@ -1250,6 +1250,7 @@ server_interval(Seconds) ->
             server_interval(NewSeconds)
     after
         10000 ->
+            error_logger:info_msg("Seconds:~p~n", [Seconds]),
             if
                 Seconds rem 10 == 0 ->
                     ok = gen_server:cast(?SERVER, clear_admin_user),
