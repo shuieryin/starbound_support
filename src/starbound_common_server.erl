@@ -328,7 +328,7 @@ init({SbbConfigPath, AppName}) ->
     io:format("~p starting...", [?MODULE]),
     {ok, RawSbbootConfig} = file:read_file(SbbConfigPath),
     SbbootConfig = jsx:decode(RawSbbootConfig, [return_maps]),
-    error_logger:info_msg("SbbootConfig:~p~n", [SbbootConfig]),
+    % error_logger:info_msg("SbbootConfig:~p~n", [SbbootConfig]),
     {ok, ?MODULE} = dets:open_file(?MODULE, [{file, ?MODULE_STRING}]),
 
     ServerHomePath = "/root/steamcmd/starbound/storage",
