@@ -522,7 +522,10 @@ handle_call({add_user, Username, Password}, _From, State) ->
     UpdatedState = add_user(Username, Password, State),
     {Status, FinalState} = user_pending_restart(Username, UpdatedState),
     {reply, Status, FinalState};
-handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
+handle_call(server_status, _From, #state{
+    online_users = OnlineUsers,
+    admin_player = AdminPlayer
+} = State) ->
     %% Collect memory usage - START
     RawMemoryUsages = re:split(os:cmd("free"), "\n", [{return, binary}]),
     {MemoryUsage, #{
@@ -557,7 +560,8 @@ handle_call(server_status, _From, #state{online_users = OnlineUsers} = State) ->
             end, #{}, OnlineUsers),
         memory_usage => <<MemoryUsageBin/binary, "%">>,
         temperature => TemperatureBin,
-        cpu_usage => <<CpuUsageBin/binary, "%">>
+        cpu_usage => <<CpuUsageBin/binary, "%">>,
+        admin_player => AdminPlayer
     }, State};
 handle_call({make_player_admin, Username}, _From, #state{
     valid_admin_players = ValidAdminPlayers,
