@@ -601,26 +601,31 @@ handle_call({make_player_admin, Username}, _From, #state{
     {UpdatedStatus, UpdatedState} =
         case Status of
             ok ->
-                ExistingUser = maps:get(Username, ExistingServerUsers),
-                NewAdminPlayer = {Username, Now + ?ADMIN_EXPIRE_TIME},
-                ok = dets:insert(?MODULE, {admin_player, NewAdminPlayer}),
-                ReturnState = State#state{
-                    admin_player = NewAdminPlayer,
-                    sbboot_config = SbbConfig#{
-                        <<"serverUsers">> := ExistingServerUsers#{
-                            Username => ExistingUser#{
-                                <<"admin">> => true
+                case maps:get(Username, ExistingServerUsers, undefined) of
+                    undefined ->
+                        {no_change, UpdatedState};
+                    ExistingUser ->
+                        ExistingUser = maps:get(Username, ExistingServerUsers, undefined),
+                        NewAdminPlayer = {Username, Now + ?ADMIN_EXPIRE_TIME},
+                        ok = dets:insert(?MODULE, {admin_player, NewAdminPlayer}),
+                        ReturnState = State#state{
+                            admin_player = NewAdminPlayer,
+                            sbboot_config = SbbConfig#{
+                                <<"serverUsers">> := ExistingServerUsers#{
+                                    Username => ExistingUser#{
+                                        <<"admin">> => true
+                                    }
+                                }
                             }
-                        }
-                    }
-                },
-                ok = write_users_info(ReturnState, false),
-                {RestartStatus, UpdatedReturnState} = user_pending_restart(Username, ReturnState),
-                case RestartStatus of
-                    done ->
-                        {sb_restarted, UpdatedReturnState};
-                    pending ->
-                        {sb_restart_pending, UpdatedReturnState}
+                        },
+                        ok = write_users_info(ReturnState, false),
+                        {RestartStatus, UpdatedReturnState} = user_pending_restart(Username, ReturnState),
+                        case RestartStatus of
+                            done ->
+                                {sb_restarted, UpdatedReturnState};
+                            pending ->
+                                {sb_restart_pending, UpdatedReturnState}
+                        end
                 end;
             _Other ->
                 {Status, State}
