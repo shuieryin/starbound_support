@@ -642,6 +642,7 @@ handle_call({remove_player_admin, Username}, _From, #state{
                 UpdatedAdminPlayer =
                     case AdminPlayer of
                         {Username, _ExpireTime} ->
+                            ok = dets:insert(?MODULE, {admin_player, undefined}),
                             undefined;
                         _OtherAdminPlayer ->
                             AdminPlayer
