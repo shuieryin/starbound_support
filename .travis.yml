@@ -7,7 +7,7 @@ services:
   - redis-server
 
 script:
-  - make
+  - make bc
 
 notifications:
   email:
