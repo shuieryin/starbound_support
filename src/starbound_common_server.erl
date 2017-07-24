@@ -90,7 +90,7 @@
 -type add_user_status() :: ok | user_exist.
 -type safe_restart_status() :: done | pending.
 -type ban_reason() :: simultaneously_duplicated_login | login_always_cause_server_down | undefined.
--type alter_admin_status() :: done | pending | existing_admin_online | invalid_admin_player | no_change.
+-type alter_admin_status() :: sb_restarted | sb_restart_pending | existing_admin_online | invalid_admin_player | no_change.
 -type server_status() :: #{
 is_sb_server_up => boolean(),
 online_users => #{Username :: binary() => #player_info{}},
@@ -578,7 +578,7 @@ handle_call({make_player_admin, Username}, _From, #state{
             true ->
                 case AdminPlayer of
                     undefined ->
-                        done;
+                        ok;
                     {ExistingUsername, ExpireTime} ->
                         case Now =< ExpireTime of
                             true ->
@@ -586,10 +586,10 @@ handle_call({make_player_admin, Username}, _From, #state{
                                     true ->
                                         existing_admin_online;
                                     false ->
-                                        done
+                                        ok
                                 end;
                             false ->
-                                done
+                                ok
                         end
                 end;
             false ->
@@ -600,7 +600,7 @@ handle_call({make_player_admin, Username}, _From, #state{
 
     {UpdatedStatus, UpdatedState} =
         case Status of
-            done ->
+            ok ->
                 ExistingUser = maps:get(Username, ExistingServerUsers),
                 NewAdminPlayer = {Username, Now + ?ADMIN_EXPIRE_TIME},
                 ok = dets:insert(?MODULE, {admin_player, NewAdminPlayer}),
@@ -615,7 +615,13 @@ handle_call({make_player_admin, Username}, _From, #state{
                     }
                 },
                 ok = write_users_info(ReturnState, false),
-                user_pending_restart(Username, ReturnState);
+                {RestartStatus, UpdatedReturnState} = user_pending_restart(Username, ReturnState),
+                case RestartStatus of
+                    done ->
+                        {sb_restarted, UpdatedReturnState};
+                    pending ->
+                        {sb_restart_pending, UpdatedReturnState}
+                end;
             _Other ->
                 {Status, State}
         end,
@@ -652,7 +658,7 @@ handle_call({remove_player_admin, Username}, _From, #state{
                 },
                 ok = write_users_info(ReturnState, false),
                 ok = restart_sb_cmd(ReturnState),
-                done;
+                sb_restarted;
             false ->
                 {no_change, State}
         end,
