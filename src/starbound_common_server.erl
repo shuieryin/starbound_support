@@ -603,7 +603,7 @@ handle_call({make_player_admin, Username}, _From, #state{
             ok ->
                 case maps:get(Username, ExistingServerUsers, undefined) of
                     undefined ->
-                        {no_change, UpdatedState};
+                        {no_change, State};
                     ExistingUser ->
                         ExistingUser = maps:get(Username, ExistingServerUsers, undefined),
                         NewAdminPlayer = {Username, Now + ?ADMIN_EXPIRE_TIME},
