@@ -48,19 +48,6 @@ start(normal, [AppNameStr] = _StartArgs) ->
                         "/assets/[...]",
                         ?MODULE,
                         {priv_dir, AppName, "assets"}
-                    },
-
-                    {
-                        "/admin/[...]",
-                        cowboy_static,
-                        {
-                            priv_dir,
-                            AppName,
-                            "admin_html",
-                            [
-                                {mimetypes, cow_mimetypes, all}
-                            ]
-                        }
                     }
                 ]
             }
