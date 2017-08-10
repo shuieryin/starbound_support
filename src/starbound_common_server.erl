@@ -577,7 +577,7 @@ handle_call({make_player_admin, Username}, _From, #state{
         case lists:member(Username, ValidAdminPlayers) of
             true ->
                 case AdminPlayer of
-                    undefined ->
+                    {} ->
                         ok;
                     {ExistingUsername, ExpireTime} ->
                         case Now =< ExpireTime of
@@ -1245,7 +1245,7 @@ server_interval(Seconds) ->
                             } = gen_server:call({global, ?SERVER}, server_state),
                             % error_logger:info_msg("AdminPlayer:~p~n", [AdminPlayer]),
                             case AdminPlayer of
-                                undefined ->
+                                {} ->
                                     ok;
                                 {Username, ExpireTime} ->
                                     case elib:timestamp() > ExpireTime of
