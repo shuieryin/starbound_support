@@ -394,7 +394,12 @@ init({SbbConfigPath, AppName}) ->
                            [] ->
                                {};
                            [{admin_player, AdminPlayer}] ->
-                               AdminPlayer
+                               case AdminPlayer of
+                                   undefined ->
+                                       {};
+                                   _Exist ->
+                                       AdminPlayer
+                               end
                        end,
         server_interval_pid = spawn(
             fun() ->
@@ -1243,7 +1248,7 @@ server_interval(Seconds) ->
                             #state{
                                 admin_player = AdminPlayer
                             } = gen_server:call({global, ?SERVER}, server_state),
-                            error_logger:info_msg("AdminPlayer:~p~n", [AdminPlayer]),
+                            % error_logger:info_msg("AdminPlayer:~p~n", [AdminPlayer]),
                             case AdminPlayer of
                                 {} ->
                                     ok;
