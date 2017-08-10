@@ -75,7 +75,7 @@
     pending_restart_usernames = [] :: [binary()],
     analyze_pid :: pid(),
     app_name :: atom(),
-    admin_player :: undefined | {Username :: binary(), ExpireTimestamp :: pos_integer()},
+    admin_player :: {} | {Username :: binary(), ExpireTimestamp :: pos_integer()},
     valid_admin_players = ?VALID_ADMIN_PLAYERS :: [Username :: binary()],
     server_interval_pid :: pid()
 }).
@@ -392,7 +392,7 @@ init({SbbConfigPath, AppName}) ->
         app_name = AppName,
         admin_player = case dets:lookup(?MODULE, admin_player) of
                            [] ->
-                               undefined;
+                               {};
                            [{admin_player, AdminPlayer}] ->
                                AdminPlayer
                        end,
