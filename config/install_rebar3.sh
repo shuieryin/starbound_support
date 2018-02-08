@@ -4,9 +4,7 @@ if [ -f "./config/rebar3" ]; then
     exit
 fi
 
-git clone --depth=1 https://github.com/rebar/rebar3.git
-cd rebar3
-./bootstrap
+cd config
+wget https://github.com/erlang/rebar3/releases/download/3.5.0/rebar3
+chmod +x rebar3
 cd ..
-cp ./rebar3/rebar3 ./config/
-rm -rf rebar3
