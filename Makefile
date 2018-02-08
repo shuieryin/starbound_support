@@ -1,4 +1,4 @@
-all: install_rebar3 install
+all: install_rebar3 build
 
 install_rebar3:
 	@./config/install_rebar3.sh
