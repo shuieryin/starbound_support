@@ -1,5 +1,5 @@
 {application, starbound_support,
-    [{vsn, "0.2.0"},
+    [{vsn, "0.2.1"},
         {description, "This is the starbound support to maintain sb server."},
         {registered, []},
         {applications, [kernel, stdlib, recon, cowboy, jsx]},

@@ -37,6 +37,7 @@ ct:
 ck:
 	@./config/rebar3 ck
 
-bc: build ck
-
 br: build run
+
+edoc:
+	@./config/rebar3 edoc
