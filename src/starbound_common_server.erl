@@ -1185,7 +1185,7 @@ write_users_info_sync(#state{
     UpdatedAllUsersBin = io_lib:format("~tp.", [AllUsers]),
     file:write_file(UsersInfoPath, UpdatedAllUsersBin),
 
-    error_logger:info_msg("SbbConfig:~p~n", [SbbConfig]),
+%%    error_logger:info_msg("SbbConfig:~p~n", [SbbConfig]),
     SbbConfigBin = jsx:encode(SbbConfig),
     file:write_file(SbbConfigPath, SbbConfigBin).
 
