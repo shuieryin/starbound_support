@@ -347,7 +347,7 @@ init({SbbConfigPath, AppName}) ->
     LogPath = filename:join([ServerHomePath, "starbound_server.log"]),
     UsersInfoPath = filename:join([ServerHomePath, "users_info"]),
     LogFilePath = filename:join([code:priv_dir(AppName), "assets", "starbound_server.log"]),
-    os:cmd("rm -f " ++ LogFilePath ++ "; echo 'start' | tee " ++ LogFilePath),
+    os:cmd("rm -f " ++ LogPath ++ "; echo 'start' | tee " ++ LogPath ++ "; rm -f " ++ LogFilePath ++ "; echo 'start' | tee " ++ LogFilePath),
     {ok, ?MODULE} = dets:open_file(?MODULE, [{file, filename:join([ServerHomePath, ?MODULE_STRING])}]),
 
     AllUsers =
