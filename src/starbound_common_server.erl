@@ -360,13 +360,6 @@ init({SbbConfigPath, AppName}) ->
         end,
 
     IsSbServerUp = is_sb_server_up(),
-    OnlineUsers =
-        case IsSbServerUp of
-            false ->
-                #{};
-            true ->
-                elib:for_each_line_in_file(LogPath, fun analyze_log/2, LogFilePath)
-        end,
 
     AnalyzePid =
         case whereis(?ANALYZE_PROCESS_NAME) of
@@ -387,7 +380,7 @@ init({SbbConfigPath, AppName}) ->
         sbboot_config = SbbootConfig,
         sbboot_config_path = SbbConfigPath,
         all_users = AllUsers,
-        online_users = OnlineUsers,
+        online_users = #{},
         analyze_pid = AnalyzePid,
         app_name = AppName,
         admin_player = case dets:lookup(?MODULE, admin_player) of
