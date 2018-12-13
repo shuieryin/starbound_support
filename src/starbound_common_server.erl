@@ -410,12 +410,14 @@ init({SbbConfigPath, AppName}) ->
 
     io:format("started~n"),
 
-    {case IsSbServerUp of
-         true ->
-             ok;
-         false ->
-             restart_sb_cmd(State)
-     end, State}.
+    case IsSbServerUp of
+        true ->
+            do_nothing;
+        false ->
+            start_sb_cmd(State)
+    end,
+
+    {ok, State}.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -1224,6 +1226,7 @@ restart_sb_cmd(#state{sbfolder_path = SbFolderPath}) ->
 %%--------------------------------------------------------------------
 -spec start_sb_cmd(#state{}) -> binary().
 start_sb_cmd(#state{sbfolder_path = SbFolderPath}) ->
+    error_logger:info_msg("Execute server start command~n"),
     re:replace(os:cmd("cd " ++ SbFolderPath ++ "; ./sb_server.sh start"), "\n", "", [{return, binary}]).
 
 %%--------------------------------------------------------------------
