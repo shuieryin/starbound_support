@@ -34,10 +34,19 @@ queue_fun:
 ct:
 	@./config/rebar3 do ct -c, cover -v
 
-ck:
+ck: build
 	@./config/rebar3 ck
 
 br: build run
 
 edoc:
 	@./config/rebar3 edoc
+
+ckr: ck run
+
+# upgrade dependency
+updep:
+	@${PWD}/config/updep.sh ${lib}
+
+release:
+	${PWD}/config/rebar3 as prod release
