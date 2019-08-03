@@ -48,7 +48,7 @@
 -define(ANALYZE_PROCESS_NAME, read_sb_log).
 -define(TEMPERATURE_FILEPATH, "/root/starbound_support/temperature").
 -define(ADMIN_EXPIRE_TIME, 60 * 60 * 2).
--define(VALID_ADMIN_PLAYERS, [<<"shuieryin">>, <<"collin">>]).
+-define(VALID_ADMIN_PLAYERS, [<<"shuieryin">>, <<"wormgun">>, <<"871420764">>, <<"collin">>, <<"123456666">>, <<"carbon6">>]).
 
 -record(player_info, {
     player_name :: binary(),
