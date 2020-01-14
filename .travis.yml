@@ -4,15 +4,15 @@ language:
   erlang
 
 services:
-- redis-server
+  - redis-server
 
 script:
-- make install_rebar3
-- make bc
+  - make install_rebar3
+  - make; make ck
 
 notifications:
   email:
-  - shuieryin@gmail.com
+    - shuieryin@gmail.com
 
 otp_release:
-- 21.0
+  - 22.1
