@@ -1,5 +1,5 @@
 ## Name of the node
--name starbound_support@127.0.0.1
+-name starbound_support@192.168.1.111
 
 ## Cookie for distributed erlang, the cookie name has to be identical to app
 ## name because below -setcookie only works for maintenance processes, hence
